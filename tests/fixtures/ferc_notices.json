@@ -1,0 +1,18 @@
+[
+  {
+    "date": "2026-06-13",
+    "title": "FERC approves pipeline expansion for Gulf Coast export capacity",
+    "url": "https://elibrary.ferc.gov/example/pipeline",
+    "text": "Commission approves certificate for 1.2 Bcf/d expansion citing reliability and export demand.",
+    "docket": "CP26-001",
+    "commodity": "natgas"
+  },
+  {
+    "date": "2026-06-12",
+    "title": "NERC reliability notice on summer peak reserves",
+    "url": "https://elibrary.ferc.gov/example/nerc",
+    "text": "Reserve margins remain adequate but heat-driven load could tighten ERCOT afternoon peaks.",
+    "docket": "RM26-010",
+    "commodity": "power"
+  }
+]

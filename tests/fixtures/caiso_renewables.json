@@ -1,0 +1,5 @@
+[
+  {"timestamp": "2026-06-14T12:00:00", "metric": "solar_curtailment_mw", "value": "1240", "unit": "MW"},
+  {"timestamp": "2026-06-14T11:00:00", "metric": "wind_output_mw", "value": "8420", "unit": "MW"},
+  {"timestamp": "2026-06-14T10:00:00", "metric": "solar_curtailment_mw", "value": "980", "unit": "MW"}
+]

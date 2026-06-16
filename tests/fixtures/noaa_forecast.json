@@ -1,0 +1,14 @@
+[
+  {
+    "startTime": "2026-06-14T12:00:00Z",
+    "temperature": 92,
+    "temperatureUnit": "F",
+    "shortForecast": "Hot and sunny"
+  },
+  {
+    "startTime": "2026-06-14T18:00:00Z",
+    "temperature": 88,
+    "temperatureUnit": "F",
+    "shortForecast": "Mostly clear"
+  }
+]
