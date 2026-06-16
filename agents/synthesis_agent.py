@@ -7,6 +7,18 @@ from agents.llm import call_claude, extract_json
 from config import settings
 from models.events import Briefing, BriefingItem, ClassifiedSignal, Urgency
 
+COMMODITY_LABELS = {
+    "power": "Power Markets",
+    "natgas": "Natural Gas",
+    "crude": "Crude Oil",
+    "renewables": "Renewables",
+    "weather": "Weather & Demand",
+}
+
+
+def _commodity_label(commodity: str) -> str:
+    return COMMODITY_LABELS.get(commodity, commodity.replace("_", " ").title())
+
 
 def _synthesize_with_rules(signals: list[ClassifiedSignal]) -> Briefing:
     grouped: dict[str, list[ClassifiedSignal]] = defaultdict(list)
@@ -40,7 +52,7 @@ def _synthesize_with_rules(signals: list[ClassifiedSignal]) -> Briefing:
         ranked_items.append(
             BriefingItem(
                 rank=rank,
-                title=f"{commodity.title()} outlook: {top.one_line_summary[:100]}",
+                title=f"{_commodity_label(commodity)} — {top.one_line_summary[:100]}",
                 confidence=round(confidence, 2),
                 evidence_links=list(dict.fromkeys(links))[:5],
                 corroboration_notes="; ".join(corroboration) if corroboration else "Single-source signal cluster.",
@@ -51,9 +63,11 @@ def _synthesize_with_rules(signals: list[ClassifiedSignal]) -> Briefing:
         rank += 1
 
     high_urgency = sum(1 for s in signals if s.urgency == Urgency.HIGH)
+    commodity_names = [_commodity_label(name) for name in grouped]
     summary = (
-        f"Synthesized {len(signals)} signals across {len(grouped)} commodities. "
-        f"{high_urgency} high-urgency items flagged."
+        f"Today's briefing synthesizes {len(signals)} signals across "
+        f"{', '.join(commodity_names)}. "
+        f"{high_urgency} high-urgency items flagged for desk review."
     )
     return Briefing(summary=summary, ranked_items=ranked_items[:8], signal_count=len(signals))
 

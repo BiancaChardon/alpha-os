@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Alpha OS — Energy Market Signal Triage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+:root{
+  /* Bloomberg Terminal palette */
+  --bg:        #000000;
+  --bg-1:      #0c0c0c;
+  --bg-2:      #141414;
+  --bg-3:      #1c1c1c;
+  --line:      #2e2e2e;
+  --line-soft: #222222;
+
+  --txt:       #e8e8e8;
+  --txt-2:     #b0b0b0;
+  --txt-3:     #707070;
+
+  --bloom-orange: #ff9900;
+  --bloom-yellow: #ffcc00;
+  --bloom-blue:   #4da6ff;
+
+  --amber:     #ff9900;
+  --amber-dim: #cc7a00;
+
+  --up:        #00c853;
+  --down:      #ff5252;
+
+  --high:      #ff5252;
+  --med:       #ff9900;
+  --low:       #4da6ff;
+
+  --power:     #00bcd4;
+  --natgas:    #4da6ff;
+  --crude:     #ff9900;
+
+  --ts:        #6fa8dc;
+  --text:      #b388ff;
+
+  --radius: 2px;
+  --row-h: 32px;
+  --mono: "Consolas", "Courier New", "IBM Plex Mono", ui-monospace, monospace;
+  --sans: Arial, "Helvetica Neue", Helvetica, sans-serif;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:12px;line-height:1.35;-webkit-font-smoothing:antialiased;}
+::selection{background:#ff990066;}
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--bg-3);border-radius:6px;border:2px solid var(--bg);}
+::-webkit-scrollbar-thumb:hover{background:var(--line);}
+.tnum{font-variant-numeric:tabular-nums;}
+
+.app{min-height:100vh;display:flex;flex-direction:column;}
+
+/* ---------- Top bar (Bloomberg command strip) ---------- */
+.topbar{display:flex;align-items:center;gap:14px;height:28px;padding:0 8px;background:var(--bloom-orange);border-bottom:1px solid #cc7a00;position:sticky;top:0;z-index:30;}
+.brand{display:flex;align-items:center;gap:8px;padding-right:12px;border-right:1px solid #00000044;height:100%;}
+.brand .mark{width:20px;height:20px;border-radius:1px;background:#000;color:var(--bloom-orange);display:grid;place-items:center;font-weight:700;font-family:var(--mono);font-size:11px;box-shadow:none;}
+.brand .name{font-weight:700;letter-spacing:0.02em;font-size:13px;color:#000;}
+.brand .name b{color:#000;font-weight:700;}
+.brand .ver{font-family:var(--mono);font-size:9px;color:#000;background:#00000022;border:1px solid #00000033;padding:0 4px;border-radius:1px;margin-left:2px;text-transform:uppercase;}
+.topnav{display:flex;gap:0;height:100%;align-items:stretch;}
+.topnav a{display:flex;align-items:center;padding:0 10px;color:#000000aa;text-decoration:none;font-size:11px;font-weight:700;font-family:var(--mono);border-right:1px solid #00000022;letter-spacing:0.02em;}
+.topnav a::before{content:attr(data-fn);margin-right:5px;color:#00000066;font-size:10px;}
+.topnav a.active{color:#000;background:#00000018;}
+.topnav a:hover{color:#000;background:#00000012;}
+.topbar .spacer{flex:1;}
+.status-pill{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:#000;font-weight:600;padding:2px 8px;border:1px solid #00000033;border-radius:1px;background:#00000015;white-space:nowrap;}
+.live-dot{width:6px;height:6px;border-radius:50%;background:#004d20;}
+.live-dot.warn{background:#000;} .live-dot.off{background:#00000055;animation:none;}
+@keyframes pulse{0%{opacity:1;}50%{opacity:0.4;}100%{opacity:1;}}
+.clock{font-family:var(--mono);font-size:11px;color:#000;font-weight:700;letter-spacing:0.04em;}
+.clock .zone{color:#00000088;font-size:9px;margin-left:3px;font-weight:600;}
+.icon-btn{width:24px;height:22px;display:grid;place-items:center;border-radius:1px;border:1px solid #00000044;background:#00000018;color:#000;cursor:pointer;}
+.icon-btn:hover{background:#00000028;}
+.icon-btn svg{width:12px;height:12px;}
+
+/* ---------- Ticker tape ---------- */
+.ticker{height:24px;background:var(--bg-1);border-bottom:1px solid var(--line);display:flex;align-items:center;overflow:hidden;position:sticky;top:28px;z-index:25;}
+.ticker-label{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--bloom-yellow);background:var(--bg-2);padding:0 10px;height:100%;display:flex;align-items:center;border-right:1px solid var(--line);flex-shrink:0;letter-spacing:0.06em;}
+.ticker-track{flex:1;overflow:hidden;white-space:nowrap;}
+.ticker-inner{display:inline-block;padding-left:100%;animation:ticker 80s linear infinite;font-family:var(--mono);font-size:11px;color:var(--txt-2);}
+.ticker-inner span{color:var(--bloom-orange);font-weight:700;margin:0 6px 0 14px;}
+.ticker-inner em{color:var(--txt);font-style:normal;}
+@keyframes ticker{0%{transform:translateX(0);}100%{transform:translateX(-100%);}}
+
+.icon-btn.spinning svg{animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ---------- Page body ---------- */
+.page{padding:6px 8px;display:flex;flex-direction:column;gap:6px;max-width:100%;width:100%;margin:0 auto;flex:1;}
+
+/* ---------- KPI row ---------- */
+.kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;}
+.kpi{background:var(--bg-1);border:1px solid var(--line);border-radius:var(--radius);padding:8px 10px;position:relative;overflow:hidden;}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent,var(--bloom-orange));}
+.kpi .label{font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--bloom-yellow);font-weight:700;font-family:var(--mono);}
+.kpi .val{font-family:var(--mono);font-size:22px;font-weight:700;line-height:1.1;margin-top:4px;letter-spacing:0;color:var(--txt);}
+.kpi .val small{font-size:12px;color:var(--txt-3);font-weight:600;}
+.kpi .sub{margin-top:3px;font-family:var(--mono);font-size:10px;color:var(--txt-3);}
+.commod-mini{display:flex;gap:14px;margin-top:9px;}
+.commod-mini .c{display:flex;flex-direction:column;gap:2px;}
+.commod-mini .c .ct{font-size:9.5px;letter-spacing:0.05em;text-transform:uppercase;color:var(--txt-3);font-weight:600;display:flex;align-items:center;gap:5px;}
+.commod-mini .c .cv{font-family:var(--mono);font-size:14px;font-weight:600;}
+.dot{width:7px;height:7px;border-radius:2px;display:inline-block;}
+.conf-bar{height:5px;border-radius:3px;background:var(--bg-3);margin-top:9px;overflow:hidden;}
+.conf-bar > i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--amber-dim),var(--amber));}
+
+/* ---------- Main panels ---------- */
+.panels{display:grid;grid-template-columns:1.32fr 1fr;gap:4px;}
+.panel{background:var(--bg);border:1px solid var(--line);border-radius:var(--radius);display:flex;flex-direction:column;min-height:280px;}
+.panel-head{display:flex;align-items:center;gap:8px;padding:4px 8px;border-bottom:1px solid var(--line);background:var(--bg-2);}
+.panel-head .ph-icon{display:none;}
+.panel-head h2{font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--bloom-yellow);font-family:var(--mono);}
+.panel-head .meta{font-family:var(--mono);font-size:9px;color:var(--txt-3);margin-left:auto;}
+.tag{font-family:var(--mono);font-size:9px;font-weight:600;padding:1px 5px;border-radius:1px;letter-spacing:0.04em;text-transform:uppercase;border:1px solid var(--line);color:var(--bloom-orange);}
+.panel-body{padding:8px 10px;overflow:auto;flex:1;}
+
+/* Synthesis briefing */
+.headline{font-size:13px;font-weight:400;line-height:1.45;margin-bottom:4px;color:var(--txt);}
+.headline em{color:var(--bloom-orange);font-style:normal;font-weight:700;}
+.byline{font-family:var(--mono);font-size:10px;color:var(--txt-3);margin-bottom:4px;display:flex;gap:8px;flex-wrap:wrap;padding-bottom:8px;border-bottom:1px solid var(--line);}
+.ranked-label{font-family:var(--mono);font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--bloom-yellow);font-weight:700;margin:8px 0 2px;}
+.ranked-label .hint{display:inline;font-weight:400;color:var(--txt-3);text-transform:none;letter-spacing:0;margin-left:6px;font-size:9px;}
+
+.item-detail{max-height:0;overflow:hidden;transition:max-height .2s ease;}
+.item.open .item-detail{max-height:520px;}
+.item-detail-inner{padding:0 0 8px;}
+.note{display:grid;grid-template-columns:72px 1fr;gap:8px;font-size:11px;line-height:1.4;margin-top:4px;padding-left:16px;}
+.note .nk{font-family:var(--mono);font-size:9px;letter-spacing:0.05em;text-transform:uppercase;font-weight:700;}
+.note.corr .nk{color:var(--up);}
+.note.contra .nk{color:var(--down);}
+.note .nv{color:var(--txt-2);}
+.evidence{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;padding-left:16px;}
+.evidence .ev-k{font-family:var(--mono);font-size:9px;color:var(--bloom-yellow);font-weight:700;text-transform:uppercase;}
+.evidence .elink{font-family:var(--mono);font-size:9px;color:var(--bloom-blue);text-decoration:none;border:1px solid var(--line);padding:1px 5px;border-radius:1px;}
+.evidence .elink:hover{color:var(--bloom-orange);border-color:var(--bloom-orange);}
+
+.item{border-top:1px solid var(--line-soft);}
+.item:first-of-type{border-top:none;}
+.item-head{display:flex;align-items:baseline;gap:8px;padding:6px 0;cursor:pointer;user-select:none;border-bottom:1px dotted var(--line-soft);}
+.item-head:hover .it-title{color:var(--bloom-orange);}
+.item-head .rank{font-family:var(--mono);font-size:10px;color:var(--bloom-orange);font-weight:700;}
+.item-head .it-title{font-weight:400;font-size:12px;line-height:1.3;flex:1;color:var(--txt);}
+.item-head .it-conf{font-family:var(--mono);font-size:10px;color:var(--txt-3);}
+.item-head .chev{color:var(--bloom-yellow);font-size:11px;}
+.item.open .chev{color:var(--bloom-orange);}
+
+/* Contrarian */
+.alt-box{background:var(--bg-1);border:1px solid var(--line);border-left:2px solid var(--down);border-radius:var(--radius);padding:8px 10px;margin-bottom:8px;}
+.alt-box .alt-k{font-family:var(--mono);font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:var(--bloom-yellow);font-weight:700;margin-bottom:4px;}
+.alt-box .alt-v{font-size:13px;line-height:1.5;color:var(--txt);text-wrap:pretty;}
+.adj-row{display:flex;align-items:center;gap:12px;margin-bottom:15px;padding:10px 13px;border:1px solid var(--line-soft);border-radius:7px;background:var(--bg);}
+.adj-row .adj-k{font-family:var(--mono);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:var(--txt-3);font-weight:600;}
+.adj-row .adj-v{font-family:var(--mono);font-size:20px;font-weight:600;margin-left:auto;}
+.adj-row .adj-note{font-family:var(--mono);font-size:10px;color:var(--txt-3);}
+.clist-head{font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--txt-3);font-weight:600;margin:0 0 8px;display:flex;align-items:center;gap:7px;}
+.clist-head::before{content:"";width:6px;height:6px;border-radius:2px;background:var(--accent,var(--down));}
+.clist{list-style:none;margin:0 0 16px;display:flex;flex-direction:column;gap:8px;}
+.clist:last-child{margin-bottom:0;}
+.clist li{display:grid;grid-template-columns:16px 1fr;gap:9px;font-size:12.5px;line-height:1.5;color:var(--txt-2);text-wrap:pretty;}
+.clist li::before{content:"–";font-family:var(--mono);color:var(--down);font-weight:600;}
+.clist.fail li::before{content:"!";color:var(--med);}
+
+/* ---------- Signal table ---------- */
+.table-wrap{background:var(--bg);border:1px solid var(--line);border-radius:var(--radius);display:flex;flex-direction:column;overflow:hidden;}
+.table-head{display:flex;align-items:center;gap:8px;padding:4px 8px;border-bottom:1px solid var(--line);background:var(--bg-2);flex-wrap:wrap;}
+.table-head h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--bloom-yellow);font-family:var(--mono);}
+.table-head .count{font-family:var(--mono);font-size:10px;color:var(--txt-3);font-weight:400;text-transform:none;}
+.filters{display:flex;align-items:center;gap:4px;margin-left:auto;flex-wrap:wrap;}
+.fgroup{display:flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:1px;overflow:hidden;background:var(--bg);}
+.fgroup button{font-family:var(--mono);font-size:10px;font-weight:600;padding:4px 8px;background:transparent;color:var(--txt-3);border:none;cursor:pointer;border-right:1px solid var(--line);}
+.fgroup button:last-child{border-right:none;}
+.fgroup button:hover{color:var(--bloom-orange);}
+.fgroup button.active{background:var(--bg-3);color:var(--bloom-yellow);}
+.search{display:flex;align-items:center;gap:5px;background:var(--bg);border:1px solid var(--line);border-radius:1px;padding:0 8px;height:24px;}
+.search input{background:none;border:none;outline:none;color:var(--txt);font-family:var(--mono);font-size:11px;width:120px;}
+.sel{height:24px;background:var(--bg);border:1px solid var(--line);border-radius:1px;color:var(--txt-2);font-family:var(--mono);font-size:10px;padding:0 22px 0 8px;}
+.tscroll{overflow:auto;max-height:42vh;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+thead th{position:sticky;top:0;z-index:1;background:var(--bg-2);text-align:left;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:var(--bloom-yellow);font-weight:700;padding:5px 8px;border-bottom:1px solid var(--line);font-family:var(--mono);cursor:pointer;}
+thead th .arr{color:var(--bloom-orange);font-size:8px;margin-left:2px;opacity:0;}
+thead th.sorted .arr{opacity:1;}
+tbody td{padding:0 8px;height:var(--row-h);border-bottom:1px solid var(--line-soft);color:var(--txt-2);vertical-align:middle;}
+tbody tr:hover td{background:#ff990011;}
+td.sum{color:var(--txt);font-weight:400;max-width:360px;white-space:normal;line-height:1.3;font-size:11px;}
+.badge{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-weight:700;letter-spacing:0.04em;text-transform:uppercase;}
+.badge .bd{width:5px;height:5px;border-radius:50%;}
+.badge.high{color:var(--high);}.badge.high .bd{background:var(--high);}
+.badge.medium{color:var(--med);}.badge.medium .bd{background:var(--med);}
+.badge.low{color:var(--low);}.badge.low .bd{background:var(--low);}
+td.time,td.num,td.src{font-family:var(--mono);font-size:11px;}
+td.num{text-align:right;}
+td.src{text-transform:uppercase;letter-spacing:0.03em;}
+.cflag{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;font-weight:600;}
+.modtag{font-family:var(--mono);font-size:9px;font-weight:700;text-transform:uppercase;padding:1px 5px;border:1px solid var(--line);border-radius:1px;}
+.modtag.timeseries{color:var(--ts);}.modtag.text{color:var(--text);}
+.sent{font-family:var(--mono);font-size:11px;font-weight:700;}
+.sent.pos{color:var(--up);}.sent.neg{color:var(--down);}.sent.neu{color:var(--txt-3);}
+thead th.num{text-align:right;}
+
+/* ---------- Command bar (Bloomberg GO line) ---------- */
+.cmdbar{height:22px;background:var(--bloom-orange);border-top:1px solid #cc7a00;display:flex;align-items:center;padding:0 8px;gap:12px;font-family:var(--mono);font-size:11px;color:#000;font-weight:700;position:sticky;bottom:0;z-index:30;}
+.cmdbar .prompt{color:#000;}
+.cmdbar .cmd{color:#000;opacity:0.85;}
+.cmdbar .spacer{flex:1;}
+.cmdbar kbd{background:#00000022;border:1px solid #00000033;padding:0 5px;border-radius:1px;font-size:10px;}
+.conf-cell{display:inline-flex;align-items:center;gap:8px;justify-content:flex-end;}
+.conf-cell .mini{width:34px;height:4px;border-radius:2px;background:var(--bg-3);overflow:hidden;}
+.conf-cell .mini > i{display:block;height:100%;background:var(--amber);}
+.empty{padding:40px;text-align:center;color:var(--txt-3);font-family:var(--mono);font-size:12px;}
+.table-foot{display:flex;align-items:center;gap:14px;padding:9px 15px;border-top:1px solid var(--line-soft);font-family:var(--mono);font-size:11px;color:var(--txt-3);}
+.table-foot .legend{display:flex;gap:14px;margin-left:auto;align-items:center;}
+.table-foot .legend span{display:flex;align-items:center;gap:5px;}
+
+/* ---------- Charts row ---------- */
+.charts-row{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:4px;}
+.chart-panel{background:var(--bg);border:1px solid var(--line);border-radius:var(--radius);display:flex;flex-direction:column;min-height:200px;}
+.chart-panel.wide{grid-column:span 1;}
+.chart-panel .panel-body{padding:4px 6px 8px;position:relative;min-height:168px;}
+.chart-panel canvas{width:100%!important;max-height:160px;}
+.chart-legend{font-family:var(--mono);font-size:9px;color:var(--txt-3);padding:0 8px 6px;display:flex;gap:12px;flex-wrap:wrap;}
+.chart-legend span{display:flex;align-items:center;gap:4px;}
+.chart-legend i{width:8px;height:8px;border-radius:1px;display:inline-block;}
+
+@media (max-width:1080px){.kpi-row{grid-template-columns:repeat(2,1fr);}.panels{grid-template-columns:1fr;}.charts-row{grid-template-columns:1fr;}}
+
+.tab-view{display:none;flex-direction:column;gap:6px;}
+.tab-view.active{display:flex;}
+.tab-panel{background:var(--bg);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;}
+.tab-panel h3{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--bloom-yellow);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;}
+.tab-panel p,.tab-panel li{font-size:12px;color:var(--txt-2);line-height:1.5;}
+.tab-panel ul{margin:6px 0 0 18px;}
+.pipeline-actions{display:flex;gap:8px;align-items:center;margin-top:10px;}
+.pipeline-btn{font-family:var(--mono);font-size:11px;font-weight:700;padding:6px 14px;background:var(--bloom-orange);color:#000;border:none;border-radius:1px;cursor:pointer;}
+.pipeline-btn:hover{background:#ffad33;}
+.topnav a{cursor:pointer;}
+
+.px-panel{margin-top:0;}
+.px-head .tag.px{background:#1a1a2e;color:#a78bfa;border-color:#4c3d8f;}
+.px-summary{font-size:12px;line-height:1.55;color:var(--txt);margin-bottom:10px;text-wrap:pretty;}
+.px-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+.px-card{background:var(--bg-1);border:1px solid var(--line);border-radius:var(--radius);padding:8px 10px;}
+.px-card h4{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--bloom-yellow);margin-bottom:6px;}
+.px-result{display:grid;gap:6px;}
+.px-hit{border-bottom:1px dotted var(--line-soft);padding-bottom:6px;}
+.px-hit:last-child{border-bottom:none;padding-bottom:0;}
+.px-hit a{font-size:11px;color:var(--bloom-blue);text-decoration:none;font-weight:600;}
+.px-hit a:hover{color:var(--bloom-orange);}
+.px-hit p{font-size:10px;color:var(--txt-3);line-height:1.4;margin-top:2px;}
+.px-related li{font-size:11px;color:var(--txt-2);margin-bottom:4px;}
+.px-related .score{font-family:var(--mono);color:var(--bloom-orange);font-size:10px;}
+.px-actions{display:flex;gap:8px;align-items:center;margin-left:auto;}
+.px-status{font-family:var(--mono);font-size:9px;color:var(--txt-3);}
+@media (max-width:1080px){.px-grid{grid-template-columns:1fr;}}
+
+.sys-banner{display:none;background:#331a00;border-bottom:1px solid var(--bloom-orange);color:var(--bloom-yellow);font-family:var(--mono);font-size:10px;padding:5px 10px;text-align:center;}
+.sys-banner.show{display:block;}
+.cmdbar .cmd-btn{cursor:pointer;user-select:none;}
+.cmdbar .cmd-btn:hover{opacity:0.75;}
+.sig-row{cursor:pointer;}
+.sig-row.open td.sum{color:var(--bloom-orange);}
+.sig-detail td{background:var(--bg-1);padding:8px 12px 10px;border-bottom:1px solid var(--line-soft);}
+.sig-detail .evidence{margin-top:0;padding-left:0;}
+.px-verdict{display:grid;gap:6px;margin-bottom:10px;}
+.px-verdict-item{border-left:2px solid var(--line);padding:6px 8px;background:var(--bg-1);}
+.px-verdict-item.corroborate{border-left-color:var(--up);}
+.px-verdict-item.challenge{border-left-color:var(--down);}
+.px-verdict-item.mixed{border-left-color:var(--med);}
+.px-verdict-item .vk{font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--bloom-yellow);}
+</style>
+</head>
+<body>
+<div id="anthropicBanner" class="sys-banner">Rules mode — ANTHROPIC_API_KEY not set. Classification and synthesis use rules-based fallbacks.</div>
+<div class="app">
+
+  <!-- ============ TOP BAR ============ -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark">α</div>
+      <div class="name">Alpha<b>OS</b></div>
+      <div class="ver">triage</div>
+    </div>
+    <nav class="topnav" id="topnav">
+      <a href="#" class="active" data-fn="F1" data-tab="briefing">Briefing</a>
+      <a href="#" data-fn="F2" data-tab="signals">Signals</a>
+      <a href="#" data-fn="F3" data-tab="sources">Sources</a>
+      <a href="#" data-fn="F4" data-tab="evaluation">Evaluation</a>
+      <a href="#" data-fn="F5" data-tab="pipeline">Pipeline</a>
+    </nav>
+    <div class="spacer"></div>
+    <div class="status-pill" id="dataSrc"><span class="live-dot off"></span> CONNECTING…</div>
+    <div class="clock"><span id="clock">--:--:--</span><span class="zone">ET</span></div>
+    <button class="icon-btn" title="Run pipeline" id="refreshBtn">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+    </button>
+  </header>
+
+  <div class="ticker">
+    <div class="ticker-label">NEWS</div>
+    <div class="ticker-track"><div class="ticker-inner" id="tickerInner">Loading market signals…</div></div>
+  </div>
+
+  <main class="page">
+
+    <!-- ============ KPI ROW ============ -->
+    <section class="kpi-row">
+      <div class="kpi" style="--accent:var(--amber)">
+        <div class="label">Classified Signals</div>
+        <div class="val tnum" id="kpiSignals">—</div>
+        <div class="sub" id="kpiSignalsSub">&nbsp;</div>
+      </div>
+      <div class="kpi" style="--accent:var(--high)">
+        <div class="label"><span class="dot" style="background:var(--high)"></span> High Urgency</div>
+        <div class="val tnum" id="kpiHigh" style="color:var(--high)">—</div>
+        <div class="sub" id="kpiHighSub">&nbsp;</div>
+      </div>
+      <div class="kpi" style="--accent:var(--power)">
+        <div class="label">By Commodity</div>
+        <div class="commod-mini" id="kpiCommod"></div>
+      </div>
+      <div class="kpi" style="--accent:var(--amber)">
+        <div class="label">Lead Item Confidence</div>
+        <div class="val tnum" id="kpiConf">—</div>
+        <div class="conf-bar"><i id="kpiConfBar" style="width:0%"></i></div>
+      </div>
+      <div class="kpi" style="--accent:var(--up)">
+        <div class="label">Briefing Generated</div>
+        <div class="val tnum" id="kpiLastRun" style="font-size:23px;margin-top:9px;">—</div>
+        <div class="sub"><span class="live-dot" style="width:6px;height:6px"></span> <span id="lastrun">—</span> · <span id="kpiAdapters">—</span></div>
+      </div>
+    </section>
+
+    <div id="tab-briefing" class="tab-view active">
+    <!-- ============ CHARTS ROW (F1 only) ============ -->
+    <section class="charts-row" id="chartsRow">
+      <div class="chart-panel wide">
+        <div class="panel-head"><h2>Price Trends</h2><div class="meta" id="chartPricesMeta">timeseries</div></div>
+        <div class="panel-body"><canvas id="chartPrices"></canvas></div>
+        <div class="chart-legend" id="chartPricesLegend"></div>
+      </div>
+      <div class="chart-panel">
+        <div class="panel-head"><h2>Signal Mix</h2><div class="meta">by commodity</div></div>
+        <div class="panel-body"><canvas id="chartCommodity"></canvas></div>
+      </div>
+      <div class="chart-panel">
+        <div class="panel-head"><h2>Urgency</h2><div class="meta">classified feed</div></div>
+        <div class="panel-body"><canvas id="chartUrgency"></canvas></div>
+      </div>
+    </section>
+
+    <!-- ============ PANELS ============ -->
+    <section class="panels">
+      <!-- Synthesis Briefing -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="ph-icon" style="background:color-mix(in oklch,var(--amber) 18%,transparent);color:var(--amber)">Σ</div>
+          <h2>Synthesis Briefing</h2>
+          <div class="meta"><span class="tag" style="color:var(--amber);background:color-mix(in oklch,var(--amber) 14%,transparent)">claude-sonnet-4-6</span></div>
+        </div>
+        <div class="panel-body">
+          <div class="headline" id="briefingSummary">—</div>
+          <div class="byline" id="briefingByline"></div>
+          <div class="ranked-label">Ranked items <span class="hint">click to expand</span></div>
+          <div id="rankedItems"></div>
+        </div>
+      </div>
+
+      <!-- Contrarian Review -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="ph-icon" style="background:color-mix(in oklch,var(--down) 18%,transparent);color:var(--down)">⚠</div>
+          <h2>Contrarian Review</h2>
+          <div class="meta"><span class="tag" style="color:var(--down);background:color-mix(in oklch,var(--down) 14%,transparent)">claude-sonnet-4-6</span></div>
+        </div>
+        <div class="panel-body" id="contrarianBody"></div>
+      </div>
+    </section>
+
+    <section class="panel px-panel">
+      <div class="panel-head">
+        <h2>Perplexity Web Research</h2>
+        <div class="px-actions">
+          <span class="px-status" id="pxStatus">—</span>
+          <button class="pipeline-btn" id="pxRefreshBtn" type="button">REFRESH RESEARCH</button>
+        </div>
+        <div class="meta"><span class="tag px">search + agent + embeddings</span></div>
+      </div>
+      <div class="panel-body">
+        <div class="px-summary" id="pxSummary">Click refresh to pull live web context for the current briefing.</div>
+        <div class="px-verdict" id="pxVerdicts"></div>
+        <div class="px-grid">
+          <div class="px-card">
+            <h4>Search results</h4>
+            <div class="px-result" id="pxSearchResults"></div>
+          </div>
+          <div class="px-card">
+            <h4>Agent citations</h4>
+            <div class="px-result" id="pxCitations"></div>
+            <h4 style="margin-top:10px">Embedding-matched signals</h4>
+            <ul class="px-related" id="pxRelated"></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+    </div>
+
+    <div id="tab-signals" class="tab-view">
+    <!-- ============ SIGNAL TABLE ============ -->
+    <section class="table-wrap">
+      <div class="table-head">
+        <h2>Classified Signals <span class="count" id="rowCount">—</span></h2>
+        <div class="filters">
+          <div class="search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" id="searchInput" placeholder="filter…" />
+          </div>
+          <div class="fgroup" id="commodityFilter">
+            <button class="active" data-commodity="all">All</button>
+            <button data-commodity="power" style="--accent:var(--power)">Power</button>
+            <button data-commodity="natgas" style="--accent:var(--natgas)">NatGas</button>
+            <button data-commodity="crude" style="--accent:var(--crude)">Crude</button>
+          </div>
+          <div class="fgroup" id="urgencyFilter">
+            <button class="active" data-urgency="all">All</button>
+            <button data-urgency="high">High</button>
+            <button data-urgency="medium">Med</button>
+            <button data-urgency="low">Low</button>
+          </div>
+          <div class="fgroup" id="modalityFilter">
+            <button class="active" data-modality="all">All</button>
+            <button data-modality="timeseries">Series</button>
+            <button data-modality="text">Text</button>
+          </div>
+          <select class="sel" id="sourceFilter"><option value="all">All sources</option></select>
+        </div>
+      </div>
+      <div class="tscroll">
+        <table>
+          <thead>
+            <tr>
+              <th data-sort="ts" class="sorted">Time <span class="arr">▼</span></th>
+              <th data-sort="one_line_summary">One-line Summary <span class="arr">▼</span></th>
+              <th data-sort="commodity">Commodity <span class="arr">▼</span></th>
+              <th data-sort="source">Source <span class="arr">▼</span></th>
+              <th data-sort="modality">Modality <span class="arr">▼</span></th>
+              <th data-sort="urgency">Urgency <span class="arr">▼</span></th>
+              <th data-sort="sentiment" class="num">Sentiment <span class="arr">▼</span></th>
+              <th data-sort="relevance_score" class="num">Relevance <span class="arr">▼</span></th>
+              <th data-sort="confidence" class="num">Conf <span class="arr">▼</span></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="empty" id="emptyState" style="display:none">No signals match the current filters.</div>
+      </div>
+      <div class="table-foot">
+        <span id="footStatus">—</span>
+        <div class="legend">
+          <span><span class="badge high" style="padding:1px 6px"><span class="bd"></span>High</span></span>
+          <span><span class="badge medium" style="padding:1px 6px"><span class="bd"></span>Medium</span></span>
+          <span><span class="badge low" style="padding:1px 6px"><span class="bd"></span>Low</span></span>
+        </div>
+      </div>
+    </section>
+    </div>
+
+    <div id="tab-sources" class="tab-view">
+      <section class="table-wrap">
+        <div class="table-head"><h2>Data Sources <span class="count" id="sourcesCount">—</span></h2></div>
+        <div class="tscroll">
+          <table>
+            <thead><tr>
+              <th>Source</th><th>Status</th><th class="num">Events</th><th>Last Run</th><th>Error</th>
+            </tr></thead>
+            <tbody id="sourcesBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <div id="tab-evaluation" class="tab-view">
+      <div class="tab-panel">
+        <h3>Eval Framework — Golden Scenarios</h3>
+        <p id="evalSummary">Loading evaluation metrics…</p>
+        <ul id="evalList"></ul>
+      </div>
+      <div class="tab-panel">
+        <h3>Rubric Weights</h3>
+        <ul>
+          <li>Ranked items present — 25%</li>
+          <li>Commodity coverage — 20%</li>
+          <li>Evidence / corroboration — 20%</li>
+          <li>Contrarian review present — 20%</li>
+          <li>Urgency alignment — 15%</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="tab-pipeline" class="tab-view">
+      <div class="tab-panel">
+        <h3>Agent Pipeline</h3>
+        <p>Ingestion → Classification (Haiku) → Synthesis (Sonnet) → Contrarian (Sonnet)</p>
+        <p id="pipelineSummary">—</p>
+        <div class="pipeline-actions">
+          <button class="pipeline-btn" id="pipelineRunBtn">RUN FULL PIPELINE</button>
+          <span class="cmd" id="pipelineStatus" style="font-family:var(--mono);font-size:11px;color:var(--txt-3);">Ready</span>
+        </div>
+      </div>
+      <section class="table-wrap">
+        <div class="table-head"><h2>Ingestion Log</h2></div>
+        <div class="tscroll">
+          <table>
+            <thead><tr><th>Source</th><th>Status</th><th class="num">Fetched</th><th>Started</th></tr></thead>
+            <tbody id="pipelineLog"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+  </main>
+
+  <footer class="cmdbar">
+    <span class="prompt">ALPHA OS &gt;</span>
+    <span class="cmd" id="cmdStatus">READY</span>
+    <span class="spacer"></span>
+    <span class="cmd-btn" id="footerPipelineBtn"><kbd>↻</kbd> RUN PIPELINE</span>
+    <span class="cmd-btn" id="footerRefreshBtn"><kbd>GO</kbd> REFRESH</span>
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+/* ============================================================================
+   Alpha OS dashboard — data-driven off the FastAPI service (api/main.py).
+   Endpoints consumed:
+     GET  {API_BASE}/briefings/latest -> { briefing, contrarian }
+     GET  {API_BASE}/signals          -> { events, classified:[ClassifiedSignal] }
+     POST {API_BASE}/pipeline/run     -> { summary, ... }
+     GET  {API_BASE}/perplexity/research -> { search_results, agent_summary, ... }
+   Falls back to the embedded SAMPLE payload (same JSON shape as model_dump)
+   whenever the API is unreachable, so the file works standalone.
+   Point at a server with ?api=http://host:port  (default: same origin when served from /dashboard/)
+   ========================================================================== */
+
+const API_BASE = new URLSearchParams(location.search).get("api") ?? "";
+
+// ---- Display maps ----
+const COMMOD = {
+  power:  {label:"Power",  color:"var(--power)"},
+  natgas: {label:"NatGas", color:"var(--natgas)"},
+  crude:  {label:"Crude",  color:"var(--crude)"},
+};
+const SOURCE_LABELS = {eia:"EIA",fred:"FRED",pjm:"PJM",ercot:"ERCOT",caiso:"CAISO",noaa:"NOAA",eia_today:"EIA Today",ferc:"FERC",opec:"OPEC"};
+const HOST_LABELS = {"eia.gov":"EIA","noaa.gov":"NOAA","pjm.com":"PJM","ercot.com":"ERCOT","opec.org":"OPEC","fred.stlouisfed.org":"FRED","ferc.gov":"FERC","caiso.com":"CAISO"};
+const URG_RANK = {high:3, medium:2, low:1};
+
+// ---- Embedded sample payload (mirrors api/main.py model_dump output) ----
+const SAMPLE_BRIEFING = {
+  briefing: {
+    briefing_id: "sample-briefing",
+    created_at: "2026-06-15T06:14:00",
+    signal_count: 20,
+    summary: "Tightening front-month power balances and a colder PJM pattern skew next week bullish, but a persistent Henry Hub storage overhang caps the rally and keeps gas range-bound.",
+    ranked_items: [
+      {rank:1, title:"Cold PJM pattern pulls power demand forward into peak days", confidence:0.91,
+        corroboration_notes:"PJM West Hub implied heat rates firming, ERCOT reserve margins tightening, and NOAA guidance agrees on below-normal temps Jun 22–26.",
+        contradiction_notes:"Ensemble spread widens beyond day 4 — the cold anomaly is not yet locked in.",
+        evidence_links:["https://www.pjm.com/markets","https://www.noaa.gov/forecast","https://www.ercot.com/lmp"], supporting_signal_ids:[]},
+      {rank:2, title:"Henry Hub storage surplus caps natural gas upside", confidence:0.84,
+        corroboration_notes:"EIA injection of +71 Bcf printed below the 78 Bcf consensus, yet inventories sit +9.4% vs. the five-year norm with production steady near 102 Bcf/d.",
+        contradiction_notes:"Sustained power burn from the heat event could tighten balances faster than storage implies.",
+        evidence_links:["https://www.eia.gov/natural-gas/storage","https://www.eia.gov/todayinenergy"], supporting_signal_ids:[]},
+      {rank:3, title:"Crude range-bound as OPEC+ holds output quotas", confidence:0.78,
+        corroboration_notes:"OPEC press release signals no quota change; US refinery utilization at a seasonal high supports cracks.",
+        contradiction_notes:"Managed money is already net long the WTI prompt spread — positioning is crowded.",
+        evidence_links:["https://www.opec.org/press","https://fred.stlouisfed.org/series/DCOILWTICO"], supporting_signal_ids:[]},
+    ],
+  },
+  contrarian: {
+    review_id: "sample-review",
+    briefing_id: "sample-briefing",
+    alternative_interpretation: "The bullish power read leans almost entirely on a single cold forecast. Strip that driver out and the tape is neutral-to-soft: gas is structurally oversupplied and crude is crowded long, so the briefing's directional conviction is fragile.",
+    confidence_adjustment: -0.12,
+    counterarguments: [
+      "Ensemble spread is wide beyond day 4; the 12z run already trimmed the cold anomaly by ~2°F.",
+      "The Henry Hub storage overhang can break implied heat rates if power burn underdelivers.",
+      "Managed money is already net long the WTI prompt spread — limited fresh marginal buyer.",
+    ],
+    failure_modes: [
+      "Forecast reverts to normal → long front-month PJM power bleeds on both legs.",
+      "An OPEC+ headline unwinds the crowded crude time-spread intraday.",
+      "A revised storage injection flips the gas narrative before the next run.",
+    ],
+  },
+};
+
+const _S = (t,summary,commodity,source,modality,urgency,sentiment,relevance,confidence,links=[])=>({
+  signal_id:"s-"+t.replace(":",""), event_id:"e-"+t.replace(":",""),
+  ts:"2026-06-15T"+t+":00", source, modality, commodity, urgency,
+  sentiment, relevance_score:relevance, confidence, one_line_summary:summary, entities:[], evidence_links:links, stats:{},
+});
+const SAMPLE_SIGNALS = [
+  _S("06:13","PJM West Hub day-ahead implied heat rate firms above 11.5","power","pjm","timeseries","high",0.58,0.91,0.88,["https://www.pjm.com/markets"]),
+  _S("06:11","NOAA 12z guidance confirms below-normal temps Jun 22–26 across Mid-Atlantic","power","noaa","text","high",0.44,0.86,0.84,["https://www.noaa.gov/forecast"]),
+  _S("06:08","EIA storage report: +71 Bcf injection, below 78 Bcf consensus","natgas","eia","timeseries","high",0.62,0.94,0.91,["https://www.eia.gov/natural-gas/storage"]),
+  _S("06:04","ERCOT reserve margin tightens; evening-peak LMP spikes","power","ercot","timeseries","high",0.71,0.79,0.79),
+  _S("05:58","Henry Hub prompt holds 3.20 support on light volume","natgas","eia","timeseries","medium",0.18,0.72,0.72),
+  _S("05:52","WTI–Brent spread narrows to $3.60 as Cushing builds slow","crude","fred","timeseries","medium",-0.22,0.68,0.68),
+  _S("05:47","CAISO midday curtailment rises; solar pushes power negative","power","caiso","timeseries","medium",-0.38,0.75,0.75),
+  _S("05:41","OPEC press release signals no change to output quotas","crude","opec","text","high",0.31,0.81,0.81,["https://www.opec.org/press"]),
+  _S("05:36","Today in Energy: LNG feedgas demand up on Sabine Pass restart","natgas","eia_today","text","medium",0.27,0.77,0.77),
+  _S("05:29","Today in Energy: US refinery utilization hits 94.1%, seasonal high","crude","eia_today","text","low",0.12,0.64,0.64),
+  _S("05:22","NOAA forecast trims MISO wind output 1.4 GW for tomorrow","power","noaa","text","medium",0.34,0.70,0.70),
+  _S("05:15","Managed money net length in WTI prompt at six-week high","crude","fred","timeseries","medium",-0.29,0.73,0.73),
+  _S("05:08","Dry gas production holds 102 Bcf/d; no freeze-offs reported","natgas","eia","timeseries","low",-0.08,0.66,0.66),
+  _S("05:01","ERCOT overnight load eases; capacity alert lifted","power","ercot","timeseries","low",-0.21,0.62,0.62),
+  _S("04:54","Diesel crack spread softens on weak distillate demand print","crude","fred","timeseries","medium",-0.46,0.71,0.71),
+  _S("04:48","PJM Zone J basis widens on transmission derate","power","pjm","timeseries","medium",0.41,0.74,0.74),
+  _S("04:39","Algonquin citygate cash trades flat into the weekend","natgas","eia","timeseries","low",0.05,0.59,0.59),
+  _S("04:31","FERC notice: Permian pipeline maintenance, 0.5 Bcf/d offline","natgas","ferc","text","medium",0.36,0.69,0.69),
+  _S("04:22","PJM RTO load forecast revised +1.8 GW for peak day","power","pjm","timeseries","high",0.55,0.83,0.83),
+  _S("04:14","Brent backwardation steepens at the front of the curve","crude","fred","timeseries","low",0.19,0.61,0.61),
+];
+
+const SAMPLE_EVENTS = [
+  {event_id:"e1",ts:"2026-06-10T00:00:00",source:"fred",modality:"timeseries",commodity:"crude",payload:{series:"DCOILWTICO",label:"WTI Crude Oil",value:76.20}},
+  {event_id:"e2",ts:"2026-06-11T00:00:00",source:"fred",modality:"timeseries",commodity:"crude",payload:{series:"DCOILWTICO",label:"WTI Crude Oil",value:77.90}},
+  {event_id:"e3",ts:"2026-06-12T00:00:00",source:"fred",modality:"timeseries",commodity:"crude",payload:{series:"DCOILWTICO",label:"WTI Crude Oil",value:78.45}},
+  {event_id:"e4",ts:"2026-06-13T00:00:00",source:"fred",modality:"timeseries",commodity:"crude",payload:{series:"DCOILWTICO",label:"WTI Crude Oil",value:79.10}},
+  {event_id:"e5",ts:"2026-06-14T00:00:00",source:"fred",modality:"timeseries",commodity:"crude",payload:{series:"DCOILWTICO",label:"WTI Crude Oil",value:78.80}},
+  {event_id:"e6",ts:"2026-06-10T00:00:00",source:"fred",modality:"timeseries",commodity:"natgas",payload:{series:"DHHNGSP",label:"Henry Hub Spot",value:2.88}},
+  {event_id:"e7",ts:"2026-06-11T00:00:00",source:"fred",modality:"timeseries",commodity:"natgas",payload:{series:"DHHNGSP",label:"Henry Hub Spot",value:2.95}},
+  {event_id:"e8",ts:"2026-06-12T00:00:00",source:"fred",modality:"timeseries",commodity:"natgas",payload:{series:"DHHNGSP",label:"Henry Hub Spot",value:3.08}},
+  {event_id:"e9",ts:"2026-06-13T00:00:00",source:"fred",modality:"timeseries",commodity:"natgas",payload:{series:"DHHNGSP",label:"Henry Hub Spot",value:3.12}},
+  {event_id:"e10",ts:"2026-06-14T00:00:00",source:"fred",modality:"timeseries",commodity:"natgas",payload:{series:"DHHNGSP",label:"Henry Hub Spot",value:3.05}},
+  {event_id:"e11",ts:"2026-06-12T00:00:00",source:"pjm",modality:"timeseries",commodity:"power",payload:{series:"WESTERN_HUB",label:"PJM Western Hub LMP",value:35.20}},
+  {event_id:"e12",ts:"2026-06-13T00:00:00",source:"pjm",modality:"timeseries",commodity:"power",payload:{series:"WESTERN_HUB",label:"PJM Western Hub LMP",value:38.70}},
+  {event_id:"e13",ts:"2026-06-14T00:00:00",source:"pjm",modality:"timeseries",commodity:"power",payload:{series:"WESTERN_HUB",label:"PJM Western Hub LMP",value:42.15}},
+];
+
+const SAMPLE_PX = {
+  query: "US energy markets wholesale power natural gas crude oil",
+  agent_summary: "Sample mode: Perplexity would corroborate the briefing against live EIA storage data, PJM load forecasts, and Henry Hub spot moves from the past week.",
+  rank_verdicts: [
+    {rank:1, title:"Cold PJM pattern pulls power demand forward", verdict:"corroborate", summary:"NOAA and ISO data align with a colder Mid-Atlantic pattern.", citations:[{title:"NOAA Forecast", url:"https://www.noaa.gov/forecast", snippet:"Below-normal temps expected."}]},
+    {rank:2, title:"Henry Hub storage surplus caps natural gas upside", verdict:"mixed", summary:"Storage overhang persists but injection missed consensus.", citations:[{title:"EIA Storage", url:"https://www.eia.gov/natural-gas/storage/", snippet:"Weekly injection data."}]},
+  ],
+  search_results: [
+    {title:"EIA Natural Gas Storage Report", url:"https://www.eia.gov/natural-gas/storage/", snippet:"Weekly underground storage statistics and analysis for the Lower 48 states."},
+    {title:"PJM Markets & Operations", url:"https://www.pjm.com/markets-and-operations", snippet:"Day-ahead and real-time LMP data for the PJM interconnection."},
+    {title:"Henry Hub Natural Gas Spot Price", url:"https://fred.stlouisfed.org/series/DHHNGSP", snippet:"Daily spot price at the Henry Hub in Louisiana."},
+  ],
+  agent_citations: [
+    {title:"Today in Energy — EIA", url:"https://www.eia.gov/todayinenergy/", snippet:"Short articles on current energy trends."},
+  ],
+  related_signals: [
+    {text:"EIA storage report: +71 Bcf injection, below consensus", score:0.82},
+    {text:"PJM West Hub day-ahead implied heat rate firms above 11.5", score:0.71},
+  ],
+};
+
+// ---- Chart instances ----
+let CHARTS = { prices: null, commodity: null, urgency: null };
+const CHART_COLORS = {
+  crude: "#ff9900", natgas: "#4da6ff", power: "#00bcd4",
+  high: "#ff5252", medium: "#ff9900", low: "#4da6ff",
+};
+const PRICE_SERIES = [
+  {key:"fred:DCOILWTICO", label:"WTI ($/bbl)", color:CHART_COLORS.crude, axis:"y"},
+  {key:"fred:DHHNGSP", label:"HH Spot ($/MMBtu)", color:CHART_COLORS.natgas, axis:"y1"},
+  {key:"eia:RNGWHHD", label:"HH Futures ($/MMBtu)", color:"#6fa8dc", axis:"y1"},
+  {key:"pjm:WESTERN_HUB", label:"PJM LMP ($/MWh)", color:CHART_COLORS.power, axis:"y1"},
+  {key:"ercot:HB_BUSAVG", label:"ERCOT LMP ($/MWh)", color:"#80cbc4", axis:"y1"},
+];
+
+function chartDefaults(){
+  if(typeof Chart === "undefined") return;
+  Chart.defaults.color = "#b0b0b0";
+  Chart.defaults.borderColor = "#2e2e2e";
+  Chart.defaults.font.family = '"IBM Plex Mono", Consolas, monospace';
+  Chart.defaults.font.size = 10;
+}
+
+function seriesKey(ev){
+  const s = ev.payload?.series || ev.payload?.pnode_name || "default";
+  return `${ev.source}:${s}`;
+}
+
+function buildPriceDatasets(events){
+  const tsEvents = (events || []).filter(e => e.modality === "timeseries" && e.payload?.value != null);
+  const byKey = {};
+  tsEvents.forEach(e => {
+    const k = seriesKey(e);
+    if(!byKey[k]) byKey[k] = [];
+    byKey[k].push({ ts: new Date(e.ts), y: Number(e.payload.value) });
+  });
+  Object.values(byKey).forEach(pts => pts.sort((a,b) => a.ts - b.ts));
+
+  const datasets = [];
+  const legend = [];
+  PRICE_SERIES.forEach(def => {
+    const pts = byKey[def.key];
+    if(!pts?.length) return;
+    datasets.push({
+      label: def.label,
+      data: pts.map(p => p.y),
+      yAxisID: def.axis,
+      _labels: pts.map(p => p.ts.toLocaleDateString("en-US", { month: "short", day: "numeric" })),
+      borderColor: def.color, backgroundColor: def.color + "33",
+      borderWidth: 1.5, pointRadius: 2, tension: 0.25, fill: false,
+    });
+    const last = pts[pts.length - 1];
+    legend.push(`<span><i style="background:${def.color}"></i>${def.label.split(" ")[0]} ${last.y.toFixed(2)}</span>`);
+  });
+  Object.keys(byKey).forEach(k => {
+    if(PRICE_SERIES.some(p => p.key === k) || !byKey[k].length) return;
+    const [src, series] = k.split(":");
+    const color = CHART_COLORS[tsEvents.find(e => seriesKey(e) === k)?.commodity] || "#b0b0b0";
+    const pts = byKey[k];
+    datasets.push({
+      label: `${srcLabel(src)} ${series}`, data: pts.map(p => p.y),
+      _labels: pts.map(p => p.ts.toLocaleDateString("en-US", { month: "short", day: "numeric" })),
+      borderColor: color, borderWidth: 1.5, pointRadius: 2, tension: 0.25,
+    });
+  });
+  const xLabels = datasets[0]?._labels || [];
+  return { datasets, legend, xLabels };
+}
+
+function destroyChart(name){
+  if(CHARTS[name]){ CHARTS[name].destroy(); CHARTS[name] = null; }
+}
+
+function renderCharts(){
+  if(typeof Chart === "undefined") return;
+  chartDefaults();
+  const events = DATA?.events || [];
+  const classified = DATA?.classified || [];
+
+  const { datasets, legend, xLabels } = buildPriceDatasets(events);
+  $("chartPricesMeta").textContent = datasets.length ? `${datasets.length} series` : "no series data";
+  $("chartPricesLegend").innerHTML = legend.join("") || "Run pipeline to load timeseries";
+
+  destroyChart("prices");
+  CHARTS.prices = new Chart($("chartPrices"), {
+    type: "line",
+    data: { labels: xLabels, datasets: datasets.map(({ _labels, ...ds }) => ds) },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: datasets.length > 1, position: "bottom", labels: { boxWidth: 10, padding: 8 } },
+        tooltip: {
+          callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2) ?? "—"}` },
+        },
+      },
+      scales: {
+        x: { grid: { color: "#1c1c1c" }, ticks: { maxTicksLimit: 6 } },
+        y: { position: "left", title: { display: true, text: "Crude $/bbl", color: CHART_COLORS.crude }, grid: { color: "#1c1c1c" }, ticks: { callback: v => Number(v).toFixed(1) } },
+        y1: { position: "right", title: { display: true, text: "Gas / Power", color: CHART_COLORS.natgas }, grid: { drawOnChartArea: false }, ticks: { callback: v => Number(v).toFixed(2) } },
+      },
+    },
+  });
+
+  const commodCounts = {};
+  classified.forEach(s => { commodCounts[s.commodity] = (commodCounts[s.commodity] || 0) + 1; });
+  const commodKeys = Object.keys(commodCounts);
+  destroyChart("commodity");
+  CHARTS.commodity = new Chart($("chartCommodity"), {
+    type: "doughnut",
+    data: {
+      labels: commodKeys.map(k => COMMOD[k]?.label || k),
+      datasets: [{ data: commodKeys.map(k => commodCounts[k]), backgroundColor: commodKeys.map(k => CHART_COLORS[k] || "#b0b0b0"), borderColor: "#141414", borderWidth: 2 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: "62%",
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 10, padding: 6 } } },
+    },
+  });
+
+  const urgCounts = { high: 0, medium: 0, low: 0 };
+  classified.forEach(s => { if(urgCounts[s.urgency] != null) urgCounts[s.urgency]++; });
+  destroyChart("urgency");
+  CHARTS.urgency = new Chart($("chartUrgency"), {
+    type: "bar",
+    data: {
+      labels: ["High", "Med", "Low"],
+      datasets: [{ data: [urgCounts.high, urgCounts.medium, urgCounts.low], backgroundColor: [CHART_COLORS.high, CHART_COLORS.medium, CHART_COLORS.low], borderRadius: 2 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 }, grid: { color: "#1c1c1c" } },
+      },
+    },
+  });
+}
+
+const $ = id => document.getElementById(id);
+function fmtTime(iso){ try{ return new Date(iso).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false}); }catch{ return (iso||"").slice(11,16); } }
+function fmtRun(iso){ try{ return new Date(iso).toLocaleString("en-US",{month:"short",day:"2-digit"}); }catch{ return "—"; } }
+function fmtRunTime(iso){ try{ return new Date(iso).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false}); }catch{ return ""; } }
+function srcLabel(code){ return SOURCE_LABELS[code] || code; }
+function linkLabel(u){ try{ const h=new URL(u).hostname.replace(/^www\./,""); return HOST_LABELS[h]||h; }catch{ return u; } }
+function ago(iso){ const d=(Date.now()-new Date(iso).getTime())/60000; if(d<1) return "just now"; if(d<60) return Math.round(d)+"m ago"; return Math.round(d/60)+"h ago"; }
+
+function renderPerplexity(){
+  const px = PX_DATA;
+  const status = $("pxStatus");
+  if(!PX_CONFIGURED && !px){
+    status.textContent = "NO API KEY";
+    $("pxSummary").textContent = "Set PERPLEXITY_API_KEY in .env and restart the API to enable live web research.";
+    $("pxVerdicts").innerHTML = "";
+    $("pxSearchResults").innerHTML = `<div class="empty" style="padding:12px">Not configured</div>`;
+    $("pxCitations").innerHTML = "";
+    $("pxRelated").innerHTML = "";
+    return;
+  }
+  if(!PX_CONFIGURED) status.textContent = "SAMPLE";
+  else status.textContent = px?.cached ? "CACHED" : px ? "LIVE" : "READY";
+  if(!px){
+    $("pxSummary").textContent = "Click REFRESH RESEARCH to query Perplexity Search, Agent, and Embeddings APIs.";
+    $("pxVerdicts").innerHTML = "";
+    $("pxSearchResults").innerHTML = "";
+    $("pxCitations").innerHTML = "";
+    $("pxRelated").innerHTML = "";
+    return;
+  }
+  $("pxSummary").textContent = px.agent_summary || "No agent summary returned.";
+  $("pxVerdicts").innerHTML = (px.rank_verdicts || []).map(v => `
+    <div class="px-verdict-item ${v.verdict}">
+      <div class="vk">#${v.rank} · ${v.verdict}</div>
+      <div style="font-size:11px;margin:3px 0">${v.title}</div>
+      <div style="font-size:11px;color:var(--txt-2)">${v.summary || ""}</div>
+      ${(v.citations||[]).map(c=>`<a class="elink" href="${c.url}" target="_blank" rel="noopener">${c.title||linkLabel(c.url)}</a>`).join(" ")}
+    </div>`).join("");
+  const hits = (px.search_results || []).map(r => `
+    <div class="px-hit">
+      <a href="${r.url}" target="_blank" rel="noopener">${r.title || r.url}</a>
+      <p>${r.snippet || ""}</p>
+    </div>`).join("");
+  $("pxSearchResults").innerHTML = hits || `<div class="empty" style="padding:12px">No search hits</div>`;
+  const cites = (px.agent_citations || []).map(r => `
+    <div class="px-hit">
+      <a href="${r.url}" target="_blank" rel="noopener">${r.title || r.url}</a>
+      <p>${r.snippet || ""}</p>
+    </div>`).join("");
+  $("pxCitations").innerHTML = cites || `<div class="empty" style="padding:12px">No citations</div>`;
+  $("pxRelated").innerHTML = (px.related_signals || []).map(r =>
+    `<li>${r.text} <span class="score">${(r.score*100).toFixed(0)}% match</span></li>`
+  ).join("") || `<li>No embedding matches</li>`;
+}
+
+async function fetchPerplexityResearch(useSample=false, force=false){
+  $("pxStatus").textContent = "FETCHING…";
+  try{
+    if(useSample){
+      PX_DATA = SAMPLE_PX;
+    }else{
+      const q = force ? "?refresh=true" : "";
+      PX_DATA = await fetchJSON("/perplexity/research"+q, {}, 120000);
+    }
+    $("pxStatus").textContent = PX_DATA?.cached ? "CACHED" : "LIVE";
+  }catch(e){
+    if(useSample || !PX_CONFIGURED){
+      PX_DATA = SAMPLE_PX;
+      $("pxStatus").textContent = "SAMPLE";
+    }else{
+      $("pxStatus").textContent = "ERROR";
+      $("pxSummary").textContent = "Perplexity request failed. Check API key and server logs.";
+    }
+  }
+  renderPerplexity();
+}
+
+// ---- State ----
+let DATA = null;
+let LAST_PIPELINE = null;
+let PX_DATA = null;
+let PX_CONFIGURED = false;
+let ANTHROPIC_CONFIGURED = true;
+let IS_LIVE = false;
+const filters = { commodity:"all", urgency:"all", modality:"all", source:"all", search:"", sortKey:"ts", sortDir:-1 };
+const openItems = new Set([0]);
+const openSignals = new Set();
+let activeTab = "briefing";
+
+const TABS = ["briefing","signals","sources","evaluation","pipeline"];
+
+function switchTab(tab){
+  if(!TABS.includes(tab)) return;
+  activeTab = tab;
+  document.querySelectorAll(".tab-view").forEach(el => el.classList.toggle("active", el.id === `tab-${tab}`));
+  document.querySelectorAll("#topnav a").forEach(a => a.classList.toggle("active", a.dataset.tab === tab));
+  $("cmdStatus").textContent = tab.toUpperCase();
+  if(tab === "sources") renderSources();
+  if(tab === "evaluation") renderEvaluation();
+  if(tab === "pipeline") renderPipeline();
+}
+
+function showAnthropicBanner(){
+  $("anthropicBanner").classList.toggle("show", IS_LIVE && !ANTHROPIC_CONFIGURED);
+}
+
+function loadSampleData(){
+  DATA = {
+    briefing: SAMPLE_BRIEFING.briefing,
+    contrarian: SAMPLE_BRIEFING.contrarian,
+    classified: SAMPLE_SIGNALS,
+    events: SAMPLE_EVENTS,
+    runs: [],
+    eval: null,
+  };
+  PX_DATA = SAMPLE_PX;
+  IS_LIVE = false;
+  setDataSrc("sample", "loading live…");
+  renderAll();
+}
+
+document.querySelectorAll("#topnav a").forEach(link => {
+  link.addEventListener("click", e => {
+    e.preventDefault();
+    switchTab(link.dataset.tab);
+  });
+});
+
+document.addEventListener("keydown", e => {
+  const fn = { F1:"briefing", F2:"signals", F3:"sources", F4:"evaluation", F5:"pipeline" }[e.key];
+  if(fn){ e.preventDefault(); switchTab(fn); }
+});
+
+function renderSources(){
+  const runs = DATA?.runs || [];
+  $("sourcesCount").textContent = `— ${runs.length} adapters`;
+  if(!runs.length){
+    $("sourcesBody").innerHTML = `<tr><td colspan="5" class="empty">No ingestion runs yet — run pipeline on F5</td></tr>`;
+    return;
+  }
+  $("sourcesBody").innerHTML = runs.map(r => `
+    <tr>
+      <td class="src">${srcLabel(r.source)}</td>
+      <td><span class="badge ${r.status === "success" ? "low" : r.status === "failed" ? "high" : "medium"}"><span class="bd"></span>${r.status}</span></td>
+      <td class="num">${r.events_fetched ?? 0}</td>
+      <td class="time">${r.finished_at ? fmtTime(r.finished_at) : fmtTime(r.started_at)}</td>
+      <td class="sum">${r.error || "—"}</td>
+    </tr>`).join("");
+}
+
+function renderEvaluation(){
+  const ev = DATA?.eval;
+  if(ev){
+    $("evalSummary").textContent = `Rubric score: ${(ev.average_score * 100).toFixed(0)}% · ${ev.scenario_count} golden scenarios`;
+    $("evalList").innerHTML = (ev.results || []).map(r =>
+      `<li>${r.scenario_id.replace(/_/g, " ")} — ${(r.score * 100).toFixed(0)}%${r.notes?.length ? ` · ${r.notes[0]}` : ""}</li>`
+    ).join("");
+    return;
+  }
+  $("evalSummary").textContent = "Loading evaluation metrics…";
+  $("evalList").innerHTML = "";
+}
+
+function renderPipeline(){
+  const br = DATA?.briefing;
+  $("pipelineSummary").textContent = LAST_PIPELINE?.summary || br?.summary || "No pipeline run yet.";
+  const runs = DATA?.runs || [];
+  $("pipelineLog").innerHTML = runs.length ? runs.map(r => `
+    <tr>
+      <td class="src">${srcLabel(r.source)}</td>
+      <td><span class="badge ${r.status === "success" ? "low" : "high"}"><span class="bd"></span>${r.status}</span></td>
+      <td class="num">${r.events_fetched ?? 0}</td>
+      <td class="time">${fmtTime(r.started_at)}</td>
+    </tr>`).join("") : `<tr><td colspan="4" class="empty">No runs logged</td></tr>`;
+}
+
+async function runPipelineAction(statusEl){
+  if(statusEl) statusEl.textContent = "RUNNING…";
+  $("cmdStatus").textContent = "RUNNING PIPELINE…";
+  try{
+    LAST_PIPELINE = await fetchJSON("/pipeline/run", { method:"POST" });
+    if(statusEl) statusEl.textContent = "COMPLETE";
+    $("cmdStatus").textContent = "PIPELINE OK";
+  }catch(e){
+    if(statusEl) statusEl.textContent = "OFFLINE";
+    $("cmdStatus").textContent = "OFFLINE — SAMPLE";
+  }
+  await loadData();
+}
+function renderKpis(){
+  const cls = DATA.classified, br = DATA.briefing;
+  $("kpiSignals").textContent = cls.length;
+  const high = cls.filter(s=>s.urgency==="high").length;
+  const sources = new Set(cls.map(s=>s.source)).size;
+  const ranked = br?.ranked_items?.length || 0;
+  $("kpiSignalsSub").textContent = `${ranked} ranked · ${sources} sources`;
+  $("kpiHigh").textContent = high;
+  $("kpiHighSub").textContent = cls.length ? `${Math.round(high/cls.length*100)}% of classified feed` : "—";
+
+  const counts = {};
+  cls.forEach(s => { counts[s.commodity] = (counts[s.commodity] || 0) + 1; });
+  const commodKeys = Object.keys(counts).sort();
+  $("kpiCommod").innerHTML = commodKeys.length ? commodKeys.map(k=>{
+    const m = COMMOD[k] || {label: k, color: "var(--txt-2)"};
+    return `<div class="c"><div class="ct"><span class="dot" style="background:${m.color}"></span> ${m.label}</div>
+    <div class="cv" style="color:${m.color}">${counts[k]}</div></div>`;
+  }).join("") : `<div class="sub">—</div>`;
+
+  const top = br?.ranked_items?.[0]?.confidence ?? 0;
+  $("kpiConf").innerHTML = `${Math.round(top*100)}<small>%</small>`;
+  $("kpiConfBar").style.width = (top*100)+"%";
+
+  $("kpiLastRun").innerHTML = `${fmtRun(br?.created_at)}<small> · ${fmtRunTime(br?.created_at)}</small>`;
+  $("lastrun").textContent = br?.created_at ? ago(br.created_at) : "—";
+  $("kpiAdapters").textContent = `${sources} live sources`;
+}
+
+// ---- Briefing render (with expanders) ----
+function renderBriefing(){
+  const br = DATA.briefing;
+  if(!br){ $("briefingSummary").textContent = "No briefing yet. Run the pipeline to generate one."; $("rankedItems").innerHTML=""; return; }
+  // light emphasis on a couple of keywords
+  let summary = br.summary
+    .replace(/\bpower\b/i, m=>`<em>${m}</em>`)
+    .replace(/\bbullish\b/i, m=>`<em>${m}</em>`);
+  $("briefingSummary").innerHTML = summary;
+  $("briefingByline").innerHTML = `
+    <span>◴ ${br.signal_count||DATA.classified.length} classified signals</span>
+    <span>· ${new Set(DATA.classified.map(s=>s.source)).size} sources</span>
+    <span>· ${br.ranked_items.length} ranked items</span>`;
+
+  $("rankedItems").innerHTML = br.ranked_items.map((it,i)=>{
+    const ev = (it.evidence_links||[]).map(u=>`<a class="elink" href="${u}" target="_blank" rel="noopener">${linkLabel(u)}</a>`).join("");
+    const pct = Math.round(it.confidence*100);
+    return `
+    <div class="item ${openItems.has(i)?"open":""}" data-idx="${i}">
+      <div class="item-head">
+        <span class="rank">#${it.rank}</span>
+        <span class="it-title">${it.title}</span>
+        <span class="it-conf">conf ${it.confidence.toFixed(2)} <span class="cbar"><i style="width:${pct}%"></i></span></span>
+        <span class="chev">›</span>
+      </div>
+      <div class="item-detail"><div class="item-detail-inner">
+        ${it.corroboration_notes?`<div class="note corr"><span class="nk">Corrob.</span><span class="nv">${it.corroboration_notes}</span></div>`:""}
+        ${it.contradiction_notes?`<div class="note contra"><span class="nk">Contra.</span><span class="nv">${it.contradiction_notes}</span></div>`:""}
+        ${ev?`<div class="evidence"><span class="ev-k">Evidence</span>${ev}</div>`:""}
+      </div></div>
+    </div>`;
+  }).join("");
+
+  $("rankedItems").querySelectorAll(".item-head").forEach(head=>{
+    head.addEventListener("click", ()=>{
+      const item = head.parentElement;
+      const idx = +item.dataset.idx;
+      if(item.classList.toggle("open")) openItems.add(idx); else openItems.delete(idx);
+    });
+  });
+}
+
+// ---- Contrarian render ----
+function renderContrarian(){
+  const c = DATA.contrarian;
+  const body = $("contrarianBody");
+  if(!c){ body.innerHTML = `<div class="empty">No contrarian review available.</div>`; return; }
+  const adj = c.confidence_adjustment ?? 0;
+  const adjStr = (adj>=0?"+":"−") + Math.abs(adj).toFixed(2);
+  const adjColor = adj>=0 ? "var(--up)" : "var(--down)";
+  body.innerHTML = `
+    <div class="alt-box">
+      <div class="alt-k">Alternative interpretation</div>
+      <div class="alt-v">${c.alternative_interpretation||""}</div>
+    </div>
+    <div class="adj-row">
+      <span class="adj-k">Confidence adjustment</span>
+      <span class="adj-note">applied to briefing</span>
+      <span class="adj-v" style="color:${adjColor}">${adjStr}</span>
+    </div>
+    <div class="clist-head">Counterarguments</div>
+    <ul class="clist">${(c.counterarguments||[]).map(a=>`<li>${a}</li>`).join("")}</ul>
+    <div class="clist-head" style="--accent:var(--med)">Failure modes</div>
+    <ul class="clist fail">${(c.failure_modes||[]).map(m=>`<li>${m}</li>`).join("")}</ul>`;
+}
+
+// ---- Table render ----
+function cflag(c){ const m=COMMOD[c]||{label:c,color:"var(--txt-2)"}; return `<span class="cflag"><span class="dot" style="background:${m.color}"></span>${m.label}</span>`; }
+function badge(u){ const lab=u==="medium"?"Med":u.charAt(0).toUpperCase()+u.slice(1); return `<span class="badge ${u}"><span class="bd"></span>${lab}</span>`; }
+function modtag(m){ return `<span class="modtag ${m}">${m==="timeseries"?"Series":"Text"}</span>`; }
+function sentCell(v){ const cls=v>0.05?"pos":v<-0.05?"neg":"neu"; return `<span class="sent ${cls}">${(v>=0?"+":"−")+Math.abs(v).toFixed(2)}</span>`; }
+function confCell(v){ return `<span class="conf-cell"><span class="mini"><i style="width:${Math.round(v*100)}%"></i></span>${v.toFixed(2)}</span>`; }
+
+function rebuildCommodityFilters(){
+  const commodities = [...new Set((DATA?.classified || []).map(s => s.commodity))].sort();
+  const active = filters.commodity;
+  const buttons = [`<button type="button" class="${active==="all"?"active":""}" data-commodity="all">All</button>`];
+  commodities.forEach(c => {
+    const m = COMMOD[c] || {label: c};
+    buttons.push(`<button type="button" class="${active===c?"active":""}" data-commodity="${c}">${m.label}</button>`);
+  });
+  $("commodityFilter").innerHTML = buttons.join("");
+}
+
+function renderTable(){
+  let rows = DATA.classified.filter(s=>{
+    if(filters.commodity!=="all" && s.commodity!==filters.commodity) return false;
+    if(filters.urgency!=="all" && s.urgency!==filters.urgency) return false;
+    if(filters.modality!=="all" && s.modality!==filters.modality) return false;
+    if(filters.source!=="all" && s.source!==filters.source) return false;
+    if(filters.search){
+      const q=filters.search.toLowerCase();
+      const hay=(s.one_line_summary+" "+(COMMOD[s.commodity]?.label||s.commodity)+" "+srcLabel(s.source)+" "+s.modality).toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  const k=filters.sortKey, dir=filters.sortDir;
+  rows.sort((a,b)=>{
+    let av,bv;
+    if(k==="urgency"){av=URG_RANK[a.urgency];bv=URG_RANK[b.urgency];}
+    else if(k==="commodity"){av=COMMOD[a.commodity]?.label||a.commodity;bv=COMMOD[b.commodity]?.label||b.commodity;}
+    else if(k==="source"){av=srcLabel(a.source);bv=srcLabel(b.source);}
+    else {av=a[k];bv=b[k];}
+    if(typeof av==="string"){return av.localeCompare(bv)*dir;}
+    return (av-bv)*dir;
+  });
+
+  const html = [];
+  rows.forEach(s => {
+    const open = openSignals.has(s.signal_id);
+    const hasEv = (s.evidence_links || []).length > 0;
+    const ev = (s.evidence_links||[]).map(u=>`<a class="elink" href="${u}" target="_blank" rel="noopener">${linkLabel(u)}</a>`).join("");
+    html.push(`<tr class="sig-row ${open?"open":""}" data-sid="${s.signal_id}">
+      <td class="time">${fmtTime(s.ts)}</td>
+      <td class="sum">${s.one_line_summary}${hasEv ? ' <span class="chev">›</span>' : ""}</td>
+      <td>${cflag(s.commodity)}</td>
+      <td class="src">${srcLabel(s.source)}</td>
+      <td>${modtag(s.modality)}</td>
+      <td>${badge(s.urgency)}</td>
+      <td class="num">${sentCell(s.sentiment)}</td>
+      <td class="num">${s.relevance_score.toFixed(2)}</td>
+      <td class="num">${confCell(s.confidence)}</td>
+    </tr>`);
+    if(hasEv){
+      html.push(`<tr class="sig-detail" style="display:${open?"table-row":"none"}"><td colspan="9">
+        <div class="evidence"><span class="ev-k">Evidence</span>${ev}</div>
+      </td></tr>`);
+    }
+  });
+  $("tbody").innerHTML = html.join("");
+  $("tbody").querySelectorAll(".sig-row").forEach(row => {
+    row.addEventListener("click", () => {
+      const sid = row.dataset.sid;
+      const sig = rows.find(r => r.signal_id === sid);
+      if(!sig?.evidence_links?.length) return;
+      if(openSignals.has(sid)) openSignals.delete(sid); else openSignals.add(sid);
+      renderTable();
+    });
+  });
+
+  $("emptyState").style.display = rows.length ? "none":"block";
+  $("rowCount").textContent = `— showing ${rows.length} of ${DATA.classified.length}`;
+  const parts=[];
+  if(filters.commodity!=="all") parts.push(COMMOD[filters.commodity]?.label || filters.commodity);
+  if(filters.urgency!=="all") parts.push(filters.urgency+" urgency");
+  if(filters.modality!=="all") parts.push(filters.modality);
+  if(filters.source!=="all") parts.push(srcLabel(filters.source));
+  if(filters.search) parts.push(`"${filters.search}"`);
+  $("footStatus").textContent = parts.length ? `Filtered by ${parts.join(" · ")}` : "Showing all signals";
+}
+
+function populateSourceDropdown(){
+  const sel=$("sourceFilter");
+  sel.querySelectorAll("option:not([value=all])").forEach(o=>o.remove());
+  [...new Set(DATA.classified.map(s=>s.source))].sort().forEach(code=>{
+    const o=document.createElement("option"); o.value=code; o.textContent=srcLabel(code); sel.appendChild(o);
+  });
+}
+
+function renderTicker(){
+  const el = $("tickerInner");
+  if(!DATA?.classified?.length){
+    el.textContent = "No signals loaded — run pipeline to ingest market data";
+    return;
+  }
+  const items = DATA.classified.slice(0, 12).map(s => {
+    const urg = s.urgency === "high" ? "URG" : s.urgency === "medium" ? "MED" : "LOW";
+    return `<span>${urg}</span><em>${srcLabel(s.source)}</em> ${s.one_line_summary}`;
+  });
+  el.innerHTML = items.join(" &nbsp;&nbsp;|&nbsp;&nbsp; ") + " &nbsp;&nbsp;|&nbsp;&nbsp; " + items.join(" &nbsp;&nbsp;|&nbsp;&nbsp; ");
+}
+
+function renderAll(){
+  rebuildCommodityFilters();
+  renderKpis(); renderCharts(); renderBriefing(); renderContrarian(); renderPerplexity(); renderTicker();
+  populateSourceDropdown(); renderTable();
+  renderSources(); renderEvaluation(); renderPipeline();
+  showAnthropicBanner();
+}
+
+// ---- Data loading ----
+function setDataSrc(state, detail){
+  const el=$("dataSrc");
+  if(state==="live") el.innerHTML = `<span class="live-dot"></span> LIVE · ${detail}`;
+  else if(state==="sample") el.innerHTML = `<span class="live-dot warn"></span> SAMPLE DATA`;
+  else el.innerHTML = `<span class="live-dot off"></span> ${detail||"CONNECTING…"}`;
+}
+
+async function fetchJSON(path, opts={}, timeoutMs=2500){
+  const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(),timeoutMs);
+  try{ const r=await fetch(API_BASE+path,{...opts,signal:ctrl.signal}); if(!r.ok) throw new Error(r.status); return await r.json(); }
+  finally{ clearTimeout(t); }
+}
+
+async function loadData(){
+  try{
+    const [health, sg, runsResp, evalResp] = await Promise.all([
+      fetchJSON("/health").catch(() => ({})),
+      fetchJSON("/signals"),
+      fetchJSON("/runs").catch(() => ({ runs: [] })),
+      fetchJSON("/eval/results").catch(() => null),
+    ]);
+    const bf = await fetchJSON("/briefings/latest").catch(() => null);
+    PX_CONFIGURED = !!health.perplexity_configured;
+    ANTHROPIC_CONFIGURED = health.anthropic_configured !== false;
+    IS_LIVE = true;
+    DATA = {
+      briefing: bf?.briefing || null,
+      contrarian: bf?.contrarian || null,
+      classified: sg.classified || [],
+      events: sg.events || [],
+      runs: runsResp.runs || [],
+      eval: evalResp,
+    };
+    setDataSrc("live", API_BASE ? API_BASE.replace(/^https?:\/\//, "") : location.host);
+  }catch(e){
+    if(!DATA) loadSampleData();
+    return;
+  }
+  renderAll();
+  if(PX_CONFIGURED && DATA?.briefing) await fetchPerplexityResearch();
+  else if(!PX_CONFIGURED) { PX_DATA = SAMPLE_PX; renderPerplexity(); }
+}
+
+// ---- Filter / sort wiring ----
+$("commodityFilter").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-commodity]");
+  if(!btn) return;
+  $("commodityFilter").querySelectorAll("button").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  filters.commodity = btn.dataset.commodity;
+  renderTable();
+});
+function wireGroup(id,key){
+  $(id).addEventListener("click", e=>{
+    const btn=e.target.closest("button"); if(!btn) return;
+    $(id).querySelectorAll("button").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active"); filters[key]=btn.dataset[key]; renderTable();
+  });
+}
+wireGroup("urgencyFilter","urgency");
+wireGroup("modalityFilter","modality");
+$("sourceFilter").addEventListener("change", e=>{ filters.source=e.target.value; renderTable(); });
+$("searchInput").addEventListener("input", e=>{ filters.search=e.target.value.trim(); renderTable(); });
+document.querySelectorAll("thead th[data-sort]").forEach(th=>{
+  th.addEventListener("click", ()=>{
+    const key=th.dataset.sort;
+    if(filters.sortKey===key){ filters.sortDir*=-1; }
+    else { filters.sortKey=key; filters.sortDir=(["one_line_summary","commodity","source","modality"].includes(key))?1:-1; }
+    document.querySelectorAll("thead th").forEach(t=>{ t.classList.remove("sorted"); const a=t.querySelector(".arr"); if(a)a.textContent="▼"; });
+    th.classList.add("sorted"); th.querySelector(".arr").textContent=filters.sortDir===1?"▲":"▼";
+    renderTable();
+  });
+});
+
+// ---- Refresh: POST /pipeline/run then reload (falls back gracefully) ----
+$("refreshBtn").addEventListener("click", async function(){
+  this.classList.add("spinning");
+  await runPipelineAction($("pipelineStatus"));
+  setTimeout(()=>this.classList.remove("spinning"), 400);
+});
+
+$("pipelineRunBtn").addEventListener("click", async () => {
+  await runPipelineAction($("pipelineStatus"));
+});
+
+$("pxRefreshBtn").addEventListener("click", async () => {
+  await fetchPerplexityResearch(!PX_CONFIGURED, true);
+});
+
+$("footerRefreshBtn").addEventListener("click", async () => {
+  $("cmdStatus").textContent = "REFRESHING…";
+  await loadData();
+  $("cmdStatus").textContent = IS_LIVE ? "LIVE" : "SAMPLE";
+});
+
+$("footerPipelineBtn").addEventListener("click", async () => {
+  $("refreshBtn").classList.add("spinning");
+  await runPipelineAction($("pipelineStatus"));
+  setTimeout(() => $("refreshBtn").classList.remove("spinning"), 400);
+});
+
+// ---- Clock ----
+function tick(){ $("clock").textContent = new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(new Date()); }
+tick(); setInterval(tick,1000);
+setInterval(()=>{ if(DATA?.briefing?.created_at) $("lastrun").textContent = ago(DATA.briefing.created_at); }, 30000);
+
+loadSampleData();
+loadData();
+</script>
+</body>
+</html>

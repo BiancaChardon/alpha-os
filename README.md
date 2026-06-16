@@ -16,19 +16,25 @@ pip install -r requirements.txt
 copy .env.example .env
 ```
 
-Run the one-command demo (fixture mode):
+Run the one-command demo (fixture mode) — **run this before presenting** to pre-warm the SQLite store with signals, briefing, and contrarian review:
 
 ```bash
 python -m pipeline.demo
 ```
 
-Start API:
+Then start the API and open the dashboard. The UI paints embedded sample data instantly, then swaps to live API data when the server responds.
 
 ```bash
 uvicorn api.main:app --reload
 ```
 
-Start UI:
+Open the **Claude Design dashboard** (recommended for presentation):
+
+```
+http://localhost:8000/dashboard/
+```
+
+Start Streamlit UI (alternative):
 
 ```bash
 cd Projects/alpha-os

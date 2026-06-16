@@ -62,6 +62,11 @@ class EventStore:
                     run_id TEXT PRIMARY KEY,
                     data TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS perplexity_research (
+                    briefing_id TEXT PRIMARY KEY,
+                    data TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
 
@@ -183,6 +188,25 @@ class EventStore:
                 (limit,),
             ).fetchall()
         return [IngestionRun.model_validate_json(row["data"]) for row in rows]
+
+    def save_perplexity_research(self, briefing_id: str, data: dict) -> None:
+        now = datetime.utcnow().isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO perplexity_research (briefing_id, data, created_at)
+                VALUES (?, ?, ?)
+                """,
+                (briefing_id, json.dumps(data), now),
+            )
+
+    def get_perplexity_research(self, briefing_id: str) -> dict | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT data FROM perplexity_research WHERE briefing_id = ?",
+                (briefing_id,),
+            ).fetchone()
+        return json.loads(row["data"]) if row else None
 
     @staticmethod
     def _row_to_event(row: sqlite3.Row) -> SignalEvent:

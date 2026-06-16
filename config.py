@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     eia_api_key: str = ""
     fred_api_key: str = ""
+    perplexity_api_key: str = ""
     anthropic_api_key: str = ""
     anthropic_classification_model: str = "claude-3-5-haiku-latest"
     anthropic_synthesis_model: str = "claude-sonnet-4-6"
