@@ -130,8 +130,23 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:12p
 .byline{font-family:var(--mono);font-size:10px;color:var(--txt-3);margin-bottom:4px;display:flex;gap:8px;flex-wrap:wrap;padding-bottom:8px;border-bottom:1px solid var(--line);}
 .ranked-label{font-family:var(--mono);font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--bloom-yellow);font-weight:700;margin:8px 0 2px;}
 .ranked-label .hint{display:inline;font-weight:400;color:var(--txt-3);text-transform:none;letter-spacing:0;margin-left:6px;font-size:9px;}
-
-.item-detail{max-height:0;overflow:hidden;transition:max-height .2s ease;}
+.ticker{display:none;}
+.decision-row{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:4px;}
+.decision-card{background:var(--bg-1);border:1px solid var(--line);border-left:2px solid var(--bloom-orange);padding:8px 10px;border-radius:var(--radius);}
+.decision-card .dk{font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--bloom-yellow);letter-spacing:0.08em;}
+.decision-card .dv{font-size:12px;line-height:1.4;margin-top:4px;color:var(--txt);}
+.px-panel.collapsed .panel-body{display:none;}
+.topnav a.admin-only{display:none;}
+body.admin .topnav a.admin-only{display:flex;}
+.action-tag{font-family:var(--mono);font-size:9px;font-weight:700;text-transform:uppercase;padding:1px 5px;border:1px solid var(--line);border-radius:1px;}
+.action-tag.buy{color:var(--up);border-color:var(--up);}
+.action-tag.sell{color:var(--down);border-color:var(--down);}
+.action-tag.hold,.action-tag.watch{color:var(--txt-3);}
+.type-tag{font-family:var(--mono);font-size:9px;color:var(--txt-3);}
+#tab-signals .tscroll{max-height:68vh;}
+.px-toggle{margin-left:8px;font-family:var(--mono);font-size:10px;color:#000;cursor:pointer;}
+.contrarian-compact .clist,.contrarian-compact .clist-head{display:none;}
+.contrarian-compact .adj-row{margin-bottom:0;}
 .item.open .item-detail{max-height:520px;}
 .item-detail-inner{padding:0 0 8px;}
 .note{display:grid;grid-template-columns:72px 1fr;gap:8px;font-size:11px;line-height:1.4;margin-top:4px;padding-left:16px;}
@@ -294,7 +309,7 @@ thead th.num{text-align:right;}
       <a href="#" data-fn="F2" data-tab="signals">Signals</a>
       <a href="#" data-fn="F3" data-tab="sources">Sources</a>
       <a href="#" data-fn="F4" data-tab="evaluation">Evaluation</a>
-      <a href="#" data-fn="F5" data-tab="pipeline">Pipeline</a>
+      <a href="#" class="admin-only" data-fn="F5" data-tab="pipeline">Pipeline</a>
     </nav>
     <div class="spacer"></div>
     <div class="status-pill" id="dataSrc"><span class="live-dot off"></span> CONNECTING…</div>
@@ -304,7 +319,7 @@ thead th.num{text-align:right;}
     </button>
   </header>
 
-  <div class="ticker">
+  <div class="ticker" aria-hidden="true">
     <div class="ticker-label">NEWS</div>
     <div class="ticker-track"><div class="ticker-inner" id="tickerInner">Loading market signals…</div></div>
   </div>
@@ -340,6 +355,7 @@ thead th.num{text-align:right;}
     </section>
 
     <div id="tab-briefing" class="tab-view active">
+    <section class="decision-row" id="decisionRow"></section>
     <!-- ============ CHARTS ROW (F1 only) ============ -->
     <section class="charts-row" id="chartsRow">
       <div class="chart-panel wide">
@@ -385,9 +401,10 @@ thead th.num{text-align:right;}
       </div>
     </section>
 
-    <section class="panel px-panel">
+    <section class="panel px-panel collapsed" id="pxPanel">
       <div class="panel-head">
         <h2>Perplexity Web Research</h2>
+        <span class="px-toggle" id="pxToggle">SHOW ▾</span>
         <div class="px-actions">
           <span class="px-status" id="pxStatus">—</span>
           <button class="pipeline-btn" id="pxRefreshBtn" type="button">REFRESH RESEARCH</button>
@@ -453,6 +470,7 @@ thead th.num{text-align:right;}
               <th data-sort="source">Source <span class="arr">▼</span></th>
               <th data-sort="modality">Modality <span class="arr">▼</span></th>
               <th data-sort="urgency">Urgency <span class="arr">▼</span></th>
+              <th data-sort="action">Action <span class="arr">▼</span></th>
               <th data-sort="sentiment" class="num">Sentiment <span class="arr">▼</span></th>
               <th data-sort="relevance_score" class="num">Relevance <span class="arr">▼</span></th>
               <th data-sort="confidence" class="num">Conf <span class="arr">▼</span></th>
@@ -489,6 +507,12 @@ thead th.num{text-align:right;}
 
     <div id="tab-evaluation" class="tab-view">
       <div class="tab-panel">
+        <h3>ML Pipeline — Prophet · K-Means · Logistic Regression</h3>
+        <p id="mlSummary">Run pipeline to train models…</p>
+        <div id="mlForecasts"></div>
+        <ul id="mlClusters"></ul>
+      </div>
+      <div class="tab-panel">
         <h3>Eval Framework — Golden Scenarios</h3>
         <p id="evalSummary">Loading evaluation metrics…</p>
         <ul id="evalList"></ul>
@@ -508,7 +532,7 @@ thead th.num{text-align:right;}
     <div id="tab-pipeline" class="tab-view">
       <div class="tab-panel">
         <h3>Agent Pipeline</h3>
-        <p>Ingestion → Classification (Haiku) → Synthesis (Sonnet) → Contrarian (Sonnet)</p>
+        <p>Ingestion → Classification (Haiku + NLTK) → ML (Prophet · K-Means · Logistic Reg) → Synthesis (Sonnet) → Contrarian (Sonnet)</p>
         <p id="pipelineSummary">—</p>
         <div class="pipeline-actions">
           <button class="pipeline-btn" id="pipelineRunBtn">RUN FULL PIPELINE</button>
@@ -552,12 +576,16 @@ thead th.num{text-align:right;}
    ========================================================================== */
 
 const API_BASE = new URLSearchParams(location.search).get("api") ?? "";
+if(new URLSearchParams(location.search).get("admin") === "1") document.body.classList.add("admin");
 
 // ---- Display maps ----
 const COMMOD = {
   power:  {label:"Power",  color:"var(--power)"},
   natgas: {label:"NatGas", color:"var(--natgas)"},
   crude:  {label:"Crude",  color:"var(--crude)"},
+  renewables: {label:"Renewables", color:"#80cbc4"},
+  weather: {label:"Weather", color:"#b388ff"},
+  general: {label:"General", color:"var(--txt-3)"},
 };
 const SOURCE_LABELS = {eia:"EIA",fred:"FRED",pjm:"PJM",ercot:"ERCOT",caiso:"CAISO",noaa:"NOAA",eia_today:"EIA Today",ferc:"FERC",opec:"OPEC"};
 const HOST_LABELS = {"eia.gov":"EIA","noaa.gov":"NOAA","pjm.com":"PJM","ercot.com":"ERCOT","opec.org":"OPEC","fred.stlouisfed.org":"FRED","ferc.gov":"FERC","caiso.com":"CAISO"};
@@ -647,6 +675,22 @@ const SAMPLE_EVENTS = [
   {event_id:"e13",ts:"2026-06-14T00:00:00",source:"pjm",modality:"timeseries",commodity:"power",payload:{series:"WESTERN_HUB",label:"PJM Western Hub LMP",value:42.15}},
 ];
 
+const SAMPLE_ML = {
+  action_model: { model: "logistic_regression", train_samples: 55, accuracy: 0.82, classes: ["buy","hold","sell","watch"] },
+  clusters: {
+    k: 3,
+    clusters: [
+      { cluster_id: 0, label: "Bullish momentum", size: 18, avg_sentiment: 0.31, top_commodity: "power" },
+      { cluster_id: 1, label: "Bearish stress", size: 12, avg_sentiment: -0.22, top_commodity: "natgas" },
+      { cluster_id: 2, label: "Neutral watch", size: 25, avg_sentiment: 0.04, top_commodity: "crude" },
+    ],
+  },
+  forecasts: [
+    { label: "WTI crude", key: "fred:DCOILWTICO", engine: "prophet", status: "ok", projected_change_pct: 1.2, periods: 5 },
+    { label: "Henry Hub spot", key: "fred:DHHNGSP", engine: "prophet", status: "ok", projected_change_pct: -0.8, periods: 5 },
+  ],
+};
+
 const SAMPLE_PX = {
   query: "US energy markets wholesale power natural gas crude oil",
   agent_summary: "Sample mode: Perplexity would corroborate the briefing against live EIA storage data, PJM load forecasts, and Henry Hub spot moves from the past week.",
@@ -707,27 +751,34 @@ function buildPriceDatasets(events){
 
   const datasets = [];
   const legend = [];
+  const pctReturns = (pts) => pts.map((p, i) => {
+    if(i === 0) return 0;
+    const prev = pts[i-1].y;
+    return prev ? ((p.y - prev) / prev) * 100 : 0;
+  });
+
   PRICE_SERIES.forEach(def => {
     const pts = byKey[def.key];
-    if(!pts?.length) return;
+    if(!pts?.length || pts.length < 2) return;
+    const returns = pctReturns(pts);
     datasets.push({
-      label: def.label,
-      data: pts.map(p => p.y),
-      yAxisID: def.axis,
-      _labels: pts.map(p => p.ts.toLocaleDateString("en-US", { month: "short", day: "numeric" })),
+      label: def.label.replace(/\([^)]+\)/, "(%)"),
+      data: returns,
       borderColor: def.color, backgroundColor: def.color + "33",
       borderWidth: 1.5, pointRadius: 2, tension: 0.25, fill: false,
+      _labels: pts.map(p => p.ts.toLocaleDateString("en-US", { month: "short", day: "numeric" })),
     });
-    const last = pts[pts.length - 1];
-    legend.push(`<span><i style="background:${def.color}"></i>${def.label.split(" ")[0]} ${last.y.toFixed(2)}</span>`);
+    const last = returns[returns.length - 1];
+    legend.push(`<span><i style="background:${def.color}"></i>${def.label.split(" ")[0]} ${last >= 0 ? "+" : ""}${last.toFixed(2)}%</span>`);
   });
   Object.keys(byKey).forEach(k => {
-    if(PRICE_SERIES.some(p => p.key === k) || !byKey[k].length) return;
+    if(PRICE_SERIES.some(p => p.key === k) || byKey[k].length < 2) return;
     const [src, series] = k.split(":");
     const color = CHART_COLORS[tsEvents.find(e => seriesKey(e) === k)?.commodity] || "#b0b0b0";
     const pts = byKey[k];
+    const returns = pctReturns(pts);
     datasets.push({
-      label: `${srcLabel(src)} ${series}`, data: pts.map(p => p.y),
+      label: `${srcLabel(src)} ${series} (%)`, data: returns,
       _labels: pts.map(p => p.ts.toLocaleDateString("en-US", { month: "short", day: "numeric" })),
       borderColor: color, borderWidth: 1.5, pointRadius: 2, tension: 0.25,
     });
@@ -747,7 +798,7 @@ function renderCharts(){
   const classified = DATA?.classified || [];
 
   const { datasets, legend, xLabels } = buildPriceDatasets(events);
-  $("chartPricesMeta").textContent = datasets.length ? `${datasets.length} series` : "no series data";
+  $("chartPricesMeta").textContent = datasets.length ? `${datasets.length} series · % change` : "no series data";
   $("chartPricesLegend").innerHTML = legend.join("") || "Run pipeline to load timeseries";
 
   destroyChart("prices");
@@ -760,13 +811,12 @@ function renderCharts(){
       plugins: {
         legend: { display: datasets.length > 1, position: "bottom", labels: { boxWidth: 10, padding: 8 } },
         tooltip: {
-          callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2) ?? "—"}` },
+          callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2) ?? "—"}%` },
         },
       },
       scales: {
         x: { grid: { color: "#1c1c1c" }, ticks: { maxTicksLimit: 6 } },
-        y: { position: "left", title: { display: true, text: "Crude $/bbl", color: CHART_COLORS.crude }, grid: { color: "#1c1c1c" }, ticks: { callback: v => Number(v).toFixed(1) } },
-        y1: { position: "right", title: { display: true, text: "Gas / Power", color: CHART_COLORS.natgas }, grid: { drawOnChartArea: false }, ticks: { callback: v => Number(v).toFixed(2) } },
+        y: { position: "left", title: { display: true, text: "Period % change", color: CHART_COLORS.crude }, grid: { color: "#1c1c1c" }, ticks: { callback: v => Number(v).toFixed(1) + "%" } },
       },
     },
   });
@@ -888,6 +938,7 @@ async function fetchPerplexityResearch(useSample=false, force=false){
 let DATA = null;
 let LAST_PIPELINE = null;
 let PX_DATA = null;
+let ML_DATA = null;
 let PX_CONFIGURED = false;
 let ANTHROPIC_CONFIGURED = true;
 let IS_LIVE = false;
@@ -905,7 +956,7 @@ function switchTab(tab){
   document.querySelectorAll("#topnav a").forEach(a => a.classList.toggle("active", a.dataset.tab === tab));
   $("cmdStatus").textContent = tab.toUpperCase();
   if(tab === "sources") renderSources();
-  if(tab === "evaluation") renderEvaluation();
+  if(tab === "evaluation") { renderML(); renderEvaluation(); }
   if(tab === "pipeline") renderPipeline();
 }
 
@@ -923,6 +974,7 @@ function loadSampleData(){
     eval: null,
   };
   PX_DATA = SAMPLE_PX;
+  ML_DATA = SAMPLE_ML;
   IS_LIVE = false;
   setDataSrc("sample", "loading live…");
   renderAll();
@@ -942,12 +994,16 @@ document.addEventListener("keydown", e => {
 
 function renderSources(){
   const runs = DATA?.runs || [];
-  $("sourcesCount").textContent = `— ${runs.length} adapters`;
+  const failed = runs.filter(r => r.status === "failed");
+  $("sourcesCount").textContent = failed.length
+    ? `— ${failed.length} source error(s)`
+    : `— ${runs.length} adapters · all healthy`;
   if(!runs.length){
-    $("sourcesBody").innerHTML = `<tr><td colspan="5" class="empty">No ingestion runs yet — run pipeline on F5</td></tr>`;
+    $("sourcesBody").innerHTML = `<tr><td colspan="5" class="empty">No ingestion runs yet</td></tr>`;
     return;
   }
-  $("sourcesBody").innerHTML = runs.map(r => `
+  const display = failed.length ? failed : runs;
+  $("sourcesBody").innerHTML = display.map(r => `
     <tr>
       <td class="src">${srcLabel(r.source)}</td>
       <td><span class="badge ${r.status === "success" ? "low" : r.status === "failed" ? "high" : "medium"}"><span class="bd"></span>${r.status}</span></td>
@@ -955,6 +1011,35 @@ function renderSources(){
       <td class="time">${r.finished_at ? fmtTime(r.finished_at) : fmtTime(r.started_at)}</td>
       <td class="sum">${r.error || "—"}</td>
     </tr>`).join("");
+}
+
+function renderML(){
+  const ml = ML_DATA;
+  if(!ml){
+    $("mlSummary").textContent = "No ML snapshot — run pipeline to train Prophet, K-Means, and logistic regression.";
+    $("mlForecasts").innerHTML = "";
+    $("mlClusters").innerHTML = "";
+    return;
+  }
+  const am = ml.action_model || {};
+  $("mlSummary").textContent = [
+    `Action model: ${am.model || "—"}`,
+    am.train_samples != null ? `${am.train_samples} training signals` : null,
+    am.accuracy != null ? `${(am.accuracy * 100).toFixed(0)}% train accuracy` : null,
+  ].filter(Boolean).join(" · ");
+
+  const forecasts = (ml.forecasts || []).filter(f => f.status === "ok");
+  $("mlForecasts").innerHTML = forecasts.length ? `
+    <table style="width:100%;margin-top:8px;font-size:11px;border-collapse:collapse">
+      <thead><tr><th style="text-align:left;padding:4px 0">Series</th><th>Engine</th><th>Proj. Δ</th></tr></thead>
+      <tbody>${forecasts.map(f => `
+        <tr><td>${f.label}</td><td>${f.engine}</td><td class="tnum" style="color:${f.projected_change_pct>=0?"var(--up)":"var(--down)"}">${f.projected_change_pct>=0?"+":""}${f.projected_change_pct}%</td></tr>
+      `).join("")}</tbody>
+    </table>` : `<p style="margin-top:8px;color:var(--txt-3)">Insufficient history for Prophet forecasts.</p>`;
+
+  $("mlClusters").innerHTML = (ml.clusters?.clusters || []).map(c =>
+    `<li>Cluster ${c.cluster_id}: <b>${c.label}</b> — ${c.size} signals · avg sentiment ${c.avg_sentiment} · ${c.top_commodity}</li>`
+  ).join("") || `<li>No clusters computed</li>`;
 }
 
 function renderEvaluation(){
@@ -996,6 +1081,26 @@ async function runPipelineAction(statusEl){
   }
   await loadData();
 }
+function renderDecisionRow(){
+  const br = DATA?.briefing;
+  const cls = DATA?.classified || [];
+  const high = cls.filter(s => s.urgency === "high").length;
+  const lead = br?.ranked_items?.[0];
+  const adj = DATA?.contrarian?.confidence_adjustment ?? 0;
+  const cards = [
+    { k: "Lead thesis", v: lead?.title || br?.summary?.slice(0, 120) || "Run pipeline to generate briefing" },
+    { k: "High urgency", v: cls.length ? `${high} signals flagged (${Math.round(high/cls.length*100)}% of feed)` : "—" },
+    { k: "Contrarian adj", v: adj ? `${adj >= 0 ? "+" : "−"}${Math.abs(adj).toFixed(2)} confidence` : "No adjustment" },
+  ];
+  $("decisionRow").innerHTML = cards.map(c => `
+    <div class="decision-card"><div class="dk">${c.k}</div><div class="dv">${c.v}</div></div>`).join("");
+}
+
+function pxVerdictForRank(rank){
+  const v = (PX_DATA?.rank_verdicts || []).find(r => r.rank === rank);
+  return v ? `<span class="px-verdict-item ${v.verdict}" style="display:inline-block;margin-left:6px;padding:2px 6px;font-size:9px">PX ${v.verdict}</span>` : "";
+}
+
 function renderKpis(){
   const cls = DATA.classified, br = DATA.briefing;
   $("kpiSignals").textContent = cls.length;
@@ -1038,15 +1143,15 @@ function renderBriefing(){
     <span>· ${new Set(DATA.classified.map(s=>s.source)).size} sources</span>
     <span>· ${br.ranked_items.length} ranked items</span>`;
 
-  $("rankedItems").innerHTML = br.ranked_items.map((it,i)=>{
+  $("rankedItems").innerHTML = br.ranked_items.slice(0, 3).map((it,i)=>{
     const ev = (it.evidence_links||[]).map(u=>`<a class="elink" href="${u}" target="_blank" rel="noopener">${linkLabel(u)}</a>`).join("");
     const pct = Math.round(it.confidence*100);
     return `
     <div class="item ${openItems.has(i)?"open":""}" data-idx="${i}">
       <div class="item-head">
         <span class="rank">#${it.rank}</span>
-        <span class="it-title">${it.title}</span>
-        <span class="it-conf">conf ${it.confidence.toFixed(2)} <span class="cbar"><i style="width:${pct}%"></i></span></span>
+        <span class="it-title">${it.title}${pxVerdictForRank(it.rank)}</span>
+        <span class="it-conf">conf ${it.confidence.toFixed(2)}</span>
         <span class="chev">›</span>
       </div>
       <div class="item-detail"><div class="item-detail-inner">
@@ -1075,7 +1180,7 @@ function renderContrarian(){
   const adjStr = (adj>=0?"+":"−") + Math.abs(adj).toFixed(2);
   const adjColor = adj>=0 ? "var(--up)" : "var(--down)";
   body.innerHTML = `
-    <div class="alt-box">
+    <div class="alt-box contrarian-compact">
       <div class="alt-k">Alternative interpretation</div>
       <div class="alt-v">${c.alternative_interpretation||""}</div>
     </div>
@@ -1108,6 +1213,14 @@ function rebuildCommodityFilters(){
   $("commodityFilter").innerHTML = buttons.join("");
 }
 
+function actionTag(s){
+  const a = (typeof s === "string") ? s : (s.action || "watch");
+  const stats = typeof s === "object" ? (s.stats || {}) : {};
+  const prob = stats.ml_action_prob;
+  const src = stats.action_source === "logistic_regression" ? " · ML" : "";
+  return `<span class="action-tag ${a}">${a.toUpperCase()}${prob != null ? ` ${Math.round(prob*100)}%` : ""}${src}</span>`;
+}
+
 function renderTable(){
   let rows = DATA.classified.filter(s=>{
     if(filters.commodity!=="all" && s.commodity!==filters.commodity) return false;
@@ -1127,6 +1240,7 @@ function renderTable(){
     if(k==="urgency"){av=URG_RANK[a.urgency];bv=URG_RANK[b.urgency];}
     else if(k==="commodity"){av=COMMOD[a.commodity]?.label||a.commodity;bv=COMMOD[b.commodity]?.label||b.commodity;}
     else if(k==="source"){av=srcLabel(a.source);bv=srcLabel(b.source);}
+    else if(k==="action"){av=a.action||"watch";bv=b.action||"watch";}
     else {av=a[k];bv=b[k];}
     if(typeof av==="string"){return av.localeCompare(bv)*dir;}
     return (av-bv)*dir;
@@ -1135,31 +1249,34 @@ function renderTable(){
   const html = [];
   rows.forEach(s => {
     const open = openSignals.has(s.signal_id);
-    const hasEv = (s.evidence_links || []).length > 0;
-    const ev = (s.evidence_links||[]).map(u=>`<a class="elink" href="${u}" target="_blank" rel="noopener">${linkLabel(u)}</a>`).join("");
+    const stats = s.stats || {};
+    const z = stats.z_score != null ? `z ${Number(stats.z_score).toFixed(1)}` : "";
+    const pct = stats.pct_change != null ? `${Number(stats.pct_change) >= 0 ? "+" : ""}${Number(stats.pct_change).toFixed(1)}%` : "";
     html.push(`<tr class="sig-row ${open?"open":""}" data-sid="${s.signal_id}">
       <td class="time">${fmtTime(s.ts)}</td>
-      <td class="sum">${s.one_line_summary}${hasEv ? ' <span class="chev">›</span>' : ""}</td>
+      <td class="sum">${s.one_line_summary}<span class="type-tag">${s.signal_type||""}</span> <span class="chev">›</span></td>
       <td>${cflag(s.commodity)}</td>
       <td class="src">${srcLabel(s.source)}</td>
       <td>${modtag(s.modality)}</td>
       <td>${badge(s.urgency)}</td>
+      <td>${actionTag(s)}</td>
       <td class="num">${sentCell(s.sentiment)}</td>
       <td class="num">${s.relevance_score.toFixed(2)}</td>
       <td class="num">${confCell(s.confidence)}</td>
     </tr>`);
-    if(hasEv){
-      html.push(`<tr class="sig-detail" style="display:${open?"table-row":"none"}"><td colspan="9">
-        <div class="evidence"><span class="ev-k">Evidence</span>${ev}</div>
-      </td></tr>`);
-    }
+    html.push(`<tr class="sig-detail" style="display:${open?"table-row":"none"}"><td colspan="10">
+      ${s.detail_summary ? `<div class="note"><span class="nk">Detail</span><span class="nv">${s.detail_summary}</span></div>` : ""}
+      ${stats.cluster_label ? `<div class="note"><span class="nk">Cluster</span><span class="nv">${stats.cluster_label} (#${stats.cluster_id})</span></div>` : ""}
+      ${stats.action_source ? `<div class="note"><span class="nk">Model</span><span class="nv">${stats.action_source}${stats.heuristic_action ? ` (heuristic was ${stats.heuristic_action})` : ""}</span></div>` : ""}
+      ${s.action_hint ? `<div class="note corr"><span class="nk">Hint</span><span class="nv">${s.action_hint}</span></div>` : ""}
+      ${(z || pct) ? `<div class="note"><span class="nk">Stats</span><span class="nv">${[pct, z].filter(Boolean).join(" · ")}</span></div>` : ""}
+      ${(s.evidence_links||[]).length ? `<div class="evidence"><span class="ev-k">Evidence</span>${(s.evidence_links||[]).map(u=>`<a class="elink" href="${u}" target="_blank" rel="noopener">${linkLabel(u)}</a>`).join("")}</div>` : ""}
+    </td></tr>`);
   });
   $("tbody").innerHTML = html.join("");
   $("tbody").querySelectorAll(".sig-row").forEach(row => {
     row.addEventListener("click", () => {
       const sid = row.dataset.sid;
-      const sig = rows.find(r => r.signal_id === sid);
-      if(!sig?.evidence_links?.length) return;
       if(openSignals.has(sid)) openSignals.delete(sid); else openSignals.add(sid);
       renderTable();
     });
@@ -1199,9 +1316,9 @@ function renderTicker(){
 
 function renderAll(){
   rebuildCommodityFilters();
-  renderKpis(); renderCharts(); renderBriefing(); renderContrarian(); renderPerplexity(); renderTicker();
+  renderKpis(); renderDecisionRow(); renderCharts(); renderBriefing(); renderContrarian(); renderPerplexity();
   populateSourceDropdown(); renderTable();
-  renderSources(); renderEvaluation(); renderPipeline();
+  renderSources(); renderML(); renderEvaluation(); renderPipeline();
   showAnthropicBanner();
 }
 
@@ -1221,11 +1338,12 @@ async function fetchJSON(path, opts={}, timeoutMs=2500){
 
 async function loadData(){
   try{
-    const [health, sg, runsResp, evalResp] = await Promise.all([
+    const [health, sg, runsResp, evalResp, mlResp] = await Promise.all([
       fetchJSON("/health").catch(() => ({})),
       fetchJSON("/signals"),
       fetchJSON("/runs").catch(() => ({ runs: [] })),
       fetchJSON("/eval/results").catch(() => null),
+      fetchJSON("/ml/latest").catch(() => null),
     ]);
     const bf = await fetchJSON("/briefings/latest").catch(() => null);
     PX_CONFIGURED = !!health.perplexity_configured;
@@ -1239,12 +1357,14 @@ async function loadData(){
       runs: runsResp.runs || [],
       eval: evalResp,
     };
+    ML_DATA = mlResp;
     setDataSrc("live", API_BASE ? API_BASE.replace(/^https?:\/\//, "") : location.host);
   }catch(e){
     if(!DATA) loadSampleData();
     return;
   }
   renderAll();
+  if(!ML_DATA) ML_DATA = SAMPLE_ML;
   if(PX_CONFIGURED && DATA?.briefing) await fetchPerplexityResearch();
   else if(!PX_CONFIGURED) { PX_DATA = SAMPLE_PX; renderPerplexity(); }
 }
@@ -1293,6 +1413,13 @@ $("pipelineRunBtn").addEventListener("click", async () => {
 
 $("pxRefreshBtn").addEventListener("click", async () => {
   await fetchPerplexityResearch(!PX_CONFIGURED, true);
+  renderBriefing();
+});
+
+$("pxToggle").addEventListener("click", () => {
+  const panel = $("pxPanel");
+  panel.classList.toggle("collapsed");
+  $("pxToggle").textContent = panel.classList.contains("collapsed") ? "SHOW ▾" : "HIDE ▴";
 });
 
 $("footerRefreshBtn").addEventListener("click", async () => {
