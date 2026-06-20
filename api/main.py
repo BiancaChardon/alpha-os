@@ -52,12 +52,16 @@ def pipeline_run() -> dict:
 
 
 @app.get("/signals")
-def signals(hours: int | None = None) -> dict:
-    events = store.get_recent_events(hours=hours)
-    classified = store.get_recent_classified_signals(hours=hours)
+def signals(hours: int | None = None, chart_hours: int | None = None) -> dict:
+    event_hours = chart_hours or settings.chart_lookback_hours
+    signal_hours = hours or settings.signal_lookback_hours
+    events = store.get_recent_events(hours=event_hours)
+    classified = store.get_recent_classified_signals(hours=signal_hours)
     return {
         "events": [e.model_dump(mode="json") for e in events],
         "classified": [s.model_dump(mode="json") for s in classified],
+        "event_hours": event_hours,
+        "signal_hours": signal_hours,
     }
 
 
@@ -116,6 +120,14 @@ def perplexity_research(*, refresh: bool = False) -> dict:
         return result
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Perplexity request failed: {exc}") from exc
+
+
+@app.get("/ml/latest")
+def ml_latest() -> dict:
+    snapshot = store.get_latest_ml_snapshot()
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="No ML snapshot available — run pipeline first")
+    return snapshot
 
 
 if WEB_DIR.exists():
