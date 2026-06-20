@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -18,6 +19,7 @@ from eval.runner import run_eval
 from ml.trade_probability import compute_trade_probabilities
 from pipeline.orchestrator import ingest_all, run_pipeline
 from pipeline.store import EventStore
+from quant.optimizer import optimize_portfolio
 
 WEB_DIR = ROOT / "ui" / "web"
 
@@ -30,6 +32,21 @@ app.add_middleware(
 )
 
 store = EventStore()
+
+
+def _parse_query_dt(value: str | None, *, end: bool = False) -> datetime | None:
+    if not value:
+        return None
+    cleaned = value.strip().replace("Z", "+00:00")
+    if "T" not in cleaned and len(cleaned) >= 10:
+        dt = datetime.fromisoformat(cleaned[:10])
+        if end:
+            return dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+        return dt
+    dt = datetime.fromisoformat(cleaned)
+    if dt.tzinfo is not None:
+        return dt.replace(tzinfo=None)
+    return dt
 
 
 @app.get("/health")
@@ -53,9 +70,26 @@ def pipeline_run() -> dict:
 
 
 @app.get("/signals")
-def signals(hours: int | None = None) -> dict:
-    events = store.get_recent_events(hours=hours)
-    classified = store.get_recent_classified_signals(hours=hours)
+def signals(
+    hours: int | None = None,
+    start: str | None = None,
+    end: str | None = None,
+) -> dict:
+    start_dt = _parse_query_dt(start)
+    end_dt = _parse_query_dt(end, end=True)
+    if start_dt or end_dt:
+        events = store.get_events(start=start_dt, end=end_dt)
+        classified = store.get_classified_signals(start=start_dt, end=end_dt)
+    elif hours is not None:
+        if hours <= 0:
+            events = store.get_events()
+            classified = store.get_classified_signals()
+        else:
+            events = store.get_events(hours=hours)
+            classified = store.get_classified_signals(hours=hours)
+    else:
+        events = store.get_recent_events()
+        classified = store.get_recent_classified_signals()
     return {
         "events": [e.model_dump(mode="json") for e in events],
         "classified": [s.model_dump(mode="json") for s in classified],
@@ -138,6 +172,54 @@ def trade_probabilities() -> dict:
         rank_verdicts=rank_verdicts,
         history=history,
     )
+
+
+@app.get("/ml/alpha/backtest")
+def alpha_backtest() -> dict:
+    history = store.get_classified_signal_history(limit=500)
+    from ml.alpha_model import walk_forward_backtest
+
+    return walk_forward_backtest(history)
+
+
+@app.get("/portfolio/optimize")
+def portfolio_optimize(
+    method: str = "mean_variance",
+    max_weight: float = 0.45,
+    risk_aversion: float = 2.5,
+) -> dict:
+    if method not in {"mean_variance", "risk_parity"}:
+        raise HTTPException(status_code=400, detail="method must be mean_variance or risk_parity")
+
+    briefing = store.get_latest_briefing()
+    if not briefing:
+        raise HTTPException(status_code=404, detail="No briefing available")
+
+    classified = store.get_recent_classified_signals(hours=settings.signal_lookback_hours)
+    history = store.get_classified_signal_history(limit=500)
+    review = store.get_contrarian_for_briefing(briefing.briefing_id)
+    px = store.get_perplexity_research(briefing.briefing_id)
+    rank_verdicts = px.get("rank_verdicts") if px else None
+
+    prob = compute_trade_probabilities(
+        briefing=briefing,
+        classified=classified,
+        contrarian=review,
+        rank_verdicts=rank_verdicts,
+        history=history,
+    )
+    optimized = optimize_portfolio(
+        trades=prob["trades"],
+        history=history,
+        method=method,
+        max_weight=max_weight,
+        risk_aversion=risk_aversion,
+    )
+    optimized["briefing_id"] = briefing.briefing_id
+    optimized["generated_at"] = briefing.created_at.isoformat()
+    optimized["source_trades"] = prob["trades"]
+    optimized["alpha_backtest"] = prob.get("backtest")
+    return optimized
 
 
 if WEB_DIR.exists():

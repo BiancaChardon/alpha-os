@@ -184,6 +184,11 @@ body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:12p
 .search{display:flex;align-items:center;gap:5px;background:var(--bg);border:1px solid var(--line);border-radius:1px;padding:0 8px;height:24px;}
 .search input{background:none;border:none;outline:none;color:var(--txt);font-family:var(--mono);font-size:11px;width:120px;}
 .sel{height:24px;background:var(--bg);border:1px solid var(--line);border-radius:1px;color:var(--txt-2);font-family:var(--mono);font-size:10px;padding:0 22px 0 8px;}
+.date-range{display:flex;align-items:center;gap:8px;padding:4px 8px;background:var(--bg-1);border:1px solid var(--line);border-radius:var(--radius);flex-wrap:wrap;}
+.date-range .label{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--bloom-yellow);}
+.date-range .range-label{font-family:var(--mono);font-size:10px;color:var(--txt-3);display:flex;align-items:center;gap:4px;}
+.date-range input[type=date]{height:24px;background:var(--bg);border:1px solid var(--line);border-radius:1px;color:var(--txt);font-family:var(--mono);font-size:10px;padding:0 6px;color-scheme:dark;}
+.date-range .range-meta{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--txt-3);}
 .tscroll{overflow:auto;max-height:42vh;}
 table{width:100%;border-collapse:collapse;font-size:12px;}
 thead th{position:sticky;top:0;z-index:1;background:var(--bg-2);text-align:left;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:var(--bloom-yellow);font-weight:700;padding:5px 8px;border-bottom:1px solid var(--line);font-family:var(--mono);cursor:pointer;}
@@ -331,6 +336,20 @@ thead th.num{text-align:right;}
 
   <main class="page">
 
+    <section class="date-range">
+      <span class="label">Date Range</span>
+      <div class="fgroup" id="datePresetFilter">
+        <button type="button" class="active" data-preset="24h">24H</button>
+        <button type="button" data-preset="7d">7D</button>
+        <button type="button" data-preset="30d">30D</button>
+        <button type="button" data-preset="all">ALL</button>
+      </div>
+      <label class="range-label">FROM <input type="date" id="dateFrom" /></label>
+      <label class="range-label">TO <input type="date" id="dateTo" /></label>
+      <button class="pipeline-btn" type="button" id="dateApplyBtn" style="padding:3px 10px;font-size:10px">APPLY</button>
+      <span class="range-meta" id="dateRangeMeta">Last 24 hours</span>
+    </section>
+
     <!-- ============ KPI ROW ============ -->
     <section class="kpi-row">
       <div class="kpi" style="--accent:var(--amber)">
@@ -410,6 +429,7 @@ thead th.num{text-align:right;}
         <h2>Trade Ideas — Desk Handoff</h2>
         <div class="trade-actions">
           <button class="pipeline-btn" type="button" id="openProbLabBtn" style="padding:4px 10px;font-size:10px">PROBABILITY LAB ↗</button>
+          <button class="pipeline-btn" type="button" id="openPortfolioLabBtn" style="padding:4px 10px;font-size:10px">PORTFOLIO LAB ↗</button>
           <button class="pipeline-btn" type="button" id="tradeExportBtn" style="padding:4px 10px;font-size:10px">EXPORT CSV</button>
           <button class="pipeline-btn" type="button" id="tradeCopyAllBtn" style="padding:4px 10px;font-size:10px">COPY ALL</button>
         </div>
@@ -790,8 +810,8 @@ function destroyChart(name){
 function renderCharts(){
   if(typeof Chart === "undefined") return;
   chartDefaults();
-  const events = DATA?.events || [];
-  const classified = DATA?.classified || [];
+  const events = (DATA?.events || []).filter(e => signalInDateRange(e.ts));
+  const classified = (DATA?.classified || []).filter(s => signalInDateRange(s.ts));
 
   const { datasets, legend, xLabels } = buildPriceDatasets(events);
   $("chartPricesMeta").textContent = datasets.length ? `${datasets.length} series` : "no series data";
@@ -877,6 +897,63 @@ function fmtRunTime(iso){
 }
 function srcLabel(code){ return SOURCE_LABELS[code] || code; }
 function linkLabel(u){ try{ const h=new URL(u).hostname.replace(/^www\./,""); return HOST_LABELS[h]||h; }catch{ return u; } }
+function fmtSignalTime(iso){
+  const d = parseIsoDate(iso);
+  if(!d) return "—";
+  return d.toLocaleString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",hour12:false});
+}
+function resolveDateRangeQuery(){
+  if(dateRange.start || dateRange.end){
+    const params = new URLSearchParams();
+    if(dateRange.start) params.set("start", `${dateRange.start}T00:00:00`);
+    if(dateRange.end) params.set("end", `${dateRange.end}T23:59:59`);
+    return `?${params.toString()}`;
+  }
+  if(dateRange.preset === "all") return "?hours=0";
+  const hours = { "24h": 24, "7d": 168, "30d": 720 }[dateRange.preset] || 24;
+  return `?hours=${hours}`;
+}
+function dateRangeLabel(){
+  if(dateRange.start || dateRange.end){
+    const from = dateRange.start || "…";
+    const to = dateRange.end || "…";
+    return `${from} → ${to}`;
+  }
+  return { "24h": "Last 24 hours", "7d": "Last 7 days", "30d": "Last 30 days", all: "All stored signals" }[dateRange.preset] || "Last 24 hours";
+}
+function signalInDateRange(iso){
+  const d = parseIsoDate(iso);
+  if(!d) return false;
+  if(dateRange.start){
+    const start = parseIsoDate(`${dateRange.start}T00:00:00`);
+    if(start && d < start) return false;
+  }
+  if(dateRange.end){
+    const end = parseIsoDate(`${dateRange.end}T23:59:59`);
+    if(end && d > end) return false;
+  }
+  if(!dateRange.start && !dateRange.end && dateRange.preset !== "all"){
+    const hours = { "24h": 24, "7d": 168, "30d": 720 }[dateRange.preset] || 24;
+    if(d.getTime() < Date.now() - hours * 3600000) return false;
+  }
+  return true;
+}
+function updateDateRangeMeta(){
+  $("dateRangeMeta").textContent = dateRangeLabel();
+}
+function applyDatePreset(preset){
+  dateRange.preset = preset;
+  dateRange.start = null;
+  dateRange.end = null;
+  $("dateFrom").value = "";
+  $("dateTo").value = "";
+  $("datePresetFilter").querySelectorAll("button").forEach(b => {
+    b.classList.toggle("active", b.dataset.preset === preset);
+  });
+  updateDateRangeMeta();
+  loadData();
+}
+
 function ago(iso){
   const d = parseIsoDate(iso);
   if(!d) return "—";
@@ -964,6 +1041,7 @@ let PX_CONFIGURED = false;
 let ANTHROPIC_CONFIGURED = true;
 let IS_LIVE = false;
 const filters = { commodity:"all", urgency:"all", modality:"all", source:"all", search:"", sortKey:"ts", sortDir:-1 };
+const dateRange = { preset:"24h", start:null, end:null };
 const openItems = new Set([0]);
 const openSignals = new Set();
 let activeTab = "briefing";
@@ -998,6 +1076,7 @@ function loadSampleData(){
   IS_LIVE = false;
   setDataSrc("sample", "loading live…");
   renderAll();
+  updateDateRangeMeta();
 }
 
 document.querySelectorAll("#topnav a").forEach(link => {
@@ -1335,6 +1414,7 @@ function rebuildCommodityFilters(){
 
 function renderTable(){
   let rows = DATA.classified.filter(s=>{
+    if(!signalInDateRange(s.ts)) return false;
     if(filters.commodity!=="all" && s.commodity!==filters.commodity) return false;
     if(filters.urgency!=="all" && s.urgency!==filters.urgency) return false;
     if(filters.modality!=="all" && s.modality!==filters.modality) return false;
@@ -1363,7 +1443,7 @@ function renderTable(){
     const hasEv = (s.evidence_links || []).length > 0;
     const ev = (s.evidence_links||[]).map(u=>`<a class="elink" href="${u}" target="_blank" rel="noopener">${linkLabel(u)}</a>`).join("");
     html.push(`<tr class="sig-row ${open?"open":""}" data-sid="${s.signal_id}">
-      <td class="time">${fmtTime(s.ts)}</td>
+      <td class="time">${fmtSignalTime(s.ts)}</td>
       <td class="sum">${s.one_line_summary}${hasEv ? ' <span class="chev">›</span>' : ""}</td>
       <td>${cflag(s.commodity)}</td>
       <td class="src">${srcLabel(s.source)}</td>
@@ -1398,6 +1478,7 @@ function renderTable(){
   if(filters.modality!=="all") parts.push(filters.modality);
   if(filters.source!=="all") parts.push(srcLabel(filters.source));
   if(filters.search) parts.push(`"${filters.search}"`);
+  if(dateRange.start || dateRange.end || dateRange.preset !== "24h") parts.push(dateRangeLabel());
   $("footStatus").textContent = parts.length ? `Filtered by ${parts.join(" · ")}` : "Showing all signals";
 }
 
@@ -1448,7 +1529,7 @@ async function loadData(){
   try{
     const [health, sg, runsResp, evalResp] = await Promise.all([
       fetchJSON("/health").catch(() => ({})),
-      fetchJSON("/signals"),
+      fetchJSON("/signals" + resolveDateRangeQuery()),
       fetchJSON("/runs").catch(() => ({ runs: [] })),
       fetchJSON("/eval/results").catch(() => null),
     ]);
@@ -1466,10 +1547,16 @@ async function loadData(){
     };
     setDataSrc("live", API_BASE ? API_BASE.replace(/^https?:\/\//, "") : location.host);
   }catch(e){
-    if(!DATA) loadSampleData();
+    if(DATA){
+      renderAll();
+      updateDateRangeMeta();
+      return;
+    }
+    loadSampleData();
     return;
   }
   renderAll();
+  updateDateRangeMeta();
   if(PX_CONFIGURED && DATA?.briefing) await fetchPerplexityResearch();
   else if(!PX_CONFIGURED) { PX_DATA = SAMPLE_PX; renderPerplexity(); }
 }
@@ -1492,6 +1579,19 @@ function wireGroup(id,key){
 }
 wireGroup("urgencyFilter","urgency");
 wireGroup("modalityFilter","modality");
+$("datePresetFilter").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-preset]");
+  if(!btn) return;
+  applyDatePreset(btn.dataset.preset);
+});
+$("dateApplyBtn").addEventListener("click", () => {
+  dateRange.start = $("dateFrom").value || null;
+  dateRange.end = $("dateTo").value || null;
+  if(dateRange.start || dateRange.end) dateRange.preset = "custom";
+  $("datePresetFilter").querySelectorAll("button").forEach(b => b.classList.remove("active"));
+  updateDateRangeMeta();
+  loadData();
+});
 $("sourceFilter").addEventListener("change", e=>{ filters.source=e.target.value; renderTable(); });
 $("searchInput").addEventListener("input", e=>{ filters.search=e.target.value.trim(); renderTable(); });
 document.querySelectorAll("thead th[data-sort]").forEach(th=>{
@@ -1536,6 +1636,9 @@ $("tradeCopyAllBtn").addEventListener("click", copyAllTradeIdeas);
 $("tradeExportBtn").addEventListener("click", exportTradeIdeasCsv);
 $("openProbLabBtn").addEventListener("click", () => {
   window.open("/dashboard/probability.html", "AlphaOS-ProbabilityLab", "width=1280,height=920,menubar=no,toolbar=no,location=no");
+});
+$("openPortfolioLabBtn").addEventListener("click", () => {
+  window.open("/dashboard/portfolio.html", "AlphaOS-PortfolioLab", "width=1280,height=920,menubar=no,toolbar=no,location=no");
 });
 
 // ---- Clock ----

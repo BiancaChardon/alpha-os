@@ -41,7 +41,9 @@ th,td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;vertic
 th{color:var(--bloom-yellow);font-size:9px;text-transform:uppercase;letter-spacing:0.06em;position:sticky;top:0;background:var(--bg-2)}
 .dir-long{color:var(--up)}.dir-short{color:var(--down)}.dir-monitor{color:var(--bloom-blue)}
 .p-win{font-weight:700}
+.kpi-row.cols6{grid-template-columns:repeat(6,1fr)}
 .status{font-family:var(--mono);font-size:10px;color:var(--txt-3);padding:4px 0}
+.backtest-note{font-family:var(--mono);font-size:10px;color:var(--txt-3);padding:4px 8px}
 </style>
 </head>
 <body>
@@ -49,6 +51,7 @@ th{color:var(--bloom-yellow);font-size:9px;text-transform:uppercase;letter-spaci
   <h1>ALPHA OS · PROBABILITY LAB</h1>
   <div class="spacer"></div>
   <button type="button" id="refreshBtn">↻ REFRESH</button>
+  <a href="/dashboard/portfolio.html">PORTFOLIO LAB →</a>
   <a href="/dashboard/">← DASHBOARD</a>
 </header>
 
@@ -64,6 +67,22 @@ th{color:var(--bloom-yellow);font-size:9px;text-transform:uppercase;letter-spaci
   </section>
 
   <div class="status" id="statusLine">—</div>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Walk-Forward Alpha Backtest (OOS)</h2></div>
+    <div class="panel-body">
+      <section class="kpi-row cols6" style="margin-bottom:8px">
+        <div class="kpi"><div class="label">OOS Accuracy</div><div class="val" id="btAcc">—</div></div>
+        <div class="kpi"><div class="label">Brier</div><div class="val" id="btBrier">—</div></div>
+        <div class="kpi"><div class="label">IC</div><div class="val" id="btIc">—</div></div>
+        <div class="kpi"><div class="label">Hit Rate</div><div class="val" id="btHit">—</div></div>
+        <div class="kpi"><div class="label">Folds</div><div class="val" id="btFolds">—</div></div>
+        <div class="kpi"><div class="label">OOS N</div><div class="val" id="btN">—</div></div>
+      </section>
+      <div class="backtest-note" id="btNote">—</div>
+      <div class="chart-wrap" style="height:180px;margin-top:8px"><canvas id="foldChart"></canvas></div>
+    </div>
+  </section>
 
   <section class="grid">
     <div class="panel">
@@ -95,6 +114,7 @@ th{color:var(--bloom-yellow);font-size:9px;text-transform:uppercase;letter-spaci
 const API = window.location.origin;
 let winChart = null;
 let mixChart = null;
+let foldChart = null;
 
 const fmtPct = (v) => `${(v * 100).toFixed(1)}%`;
 const dirClass = (d) => d === "long" ? "dir-long" : d === "short" ? "dir-short" : "dir-monitor";
@@ -126,6 +146,42 @@ function render(data) {
   if (data.model?.train_accuracy != null) sub.push(`acc ${(data.model.train_accuracy * 100).toFixed(0)}%`);
   if (data.model?.brier_score != null) sub.push(`brier ${data.model.brier_score}`);
   document.getElementById("kpiTrainSub").textContent = sub.join(" · ") || data.model?.label_definition?.slice(0, 40) + "…";
+
+  const bt = data.backtest || {};
+  const m = bt.metrics || {};
+  document.getElementById("btAcc").textContent = m.accuracy != null ? fmtPct(m.accuracy) : "—";
+  document.getElementById("btBrier").textContent = m.brier_score ?? "—";
+  document.getElementById("btIc").textContent = m.information_coefficient ?? "—";
+  document.getElementById("btHit").textContent = m.hit_rate != null ? fmtPct(m.hit_rate) : "—";
+  document.getElementById("btFolds").textContent = bt.folds_completed ?? "—";
+  document.getElementById("btN").textContent = bt.out_of_sample_predictions ?? bt.samples ?? "—";
+  document.getElementById("btNote").textContent = bt.status === "ok"
+    ? (bt.disclaimer || "Walk-forward out-of-sample evaluation.")
+    : (bt.message || "Insufficient history for walk-forward backtest.");
+
+  if (foldChart) foldChart.destroy();
+  const folds = bt.folds || [];
+  if (folds.length) {
+    foldChart = new Chart(document.getElementById("foldChart"), {
+      type: "line",
+      data: {
+        labels: folds.map(f => `Fold ${f.fold}`),
+        datasets: [
+          { label: "Accuracy", data: folds.map(f => f.accuracy), borderColor: "#4da6ff", tension: 0.25 },
+          { label: "Brier", data: folds.map(f => f.brier_score), borderColor: "#ff9900", tension: 0.25 },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: "#b0b0b0", font: { family: "IBM Plex Mono", size: 10 } } } },
+        scales: {
+          x: { ticks: { color: "#707070" }, grid: { color: "#222" } },
+          y: { ticks: { color: "#707070" }, grid: { color: "#222" } },
+        },
+      },
+    });
+  }
 
   const trades = data.trades || [];
   const labels = trades.map(t => `#${t.rank}`);

@@ -98,15 +98,49 @@ class EventStore:
                     continue
         return inserted
 
-    def get_recent_events(self, hours: int | None = None) -> list[SignalEvent]:
-        hours = hours or settings.signal_lookback_hours
-        cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+    @staticmethod
+    def _window_bounds(
+        *,
+        hours: int | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> tuple[str | None, str | None]:
+        if start or end:
+            return (
+                start.isoformat() if start else None,
+                end.isoformat() if end else None,
+            )
+        if hours is not None and hours > 0:
+            cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+            return cutoff, None
+        return None, None
+
+    def get_events(
+        self,
+        *,
+        hours: int | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> list[SignalEvent]:
+        start_iso, end_iso = self._window_bounds(hours=hours, start=start, end=end)
+        query = "SELECT * FROM raw_events"
+        clauses: list[str] = []
+        params: list[str] = []
+        if start_iso:
+            clauses.append("ts >= ?")
+            params.append(start_iso)
+        if end_iso:
+            clauses.append("ts <= ?")
+            params.append(end_iso)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY ts DESC"
         with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT * FROM raw_events WHERE ts >= ? ORDER BY ts DESC",
-                (cutoff,),
-            ).fetchall()
+            rows = conn.execute(query, params).fetchall()
         return [self._row_to_event(row) for row in rows]
+
+    def get_recent_events(self, hours: int | None = None) -> list[SignalEvent]:
+        return self.get_events(hours=hours or settings.signal_lookback_hours)
 
     def save_classified_signals(self, signals: list[ClassifiedSignal]) -> None:
         now = datetime.utcnow().isoformat()
@@ -120,15 +154,32 @@ class EventStore:
                     (signal.signal_id, signal.event_id, signal.model_dump_json(), now),
                 )
 
-    def get_recent_classified_signals(self, hours: int | None = None) -> list[ClassifiedSignal]:
-        hours = hours or settings.signal_lookback_hours
-        cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+    def get_classified_signals(
+        self,
+        *,
+        hours: int | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> list[ClassifiedSignal]:
+        start_iso, end_iso = self._window_bounds(hours=hours, start=start, end=end)
+        query = "SELECT data FROM classified_signals"
+        clauses: list[str] = []
+        params: list[str] = []
+        if start_iso:
+            clauses.append("json_extract(data, '$.ts') >= ?")
+            params.append(start_iso)
+        if end_iso:
+            clauses.append("json_extract(data, '$.ts') <= ?")
+            params.append(end_iso)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY json_extract(data, '$.ts') DESC"
         with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT data FROM classified_signals WHERE created_at >= ? ORDER BY created_at DESC",
-                (cutoff,),
-            ).fetchall()
+            rows = conn.execute(query, params).fetchall()
         return [ClassifiedSignal.model_validate_json(row["data"]) for row in rows]
+
+    def get_recent_classified_signals(self, hours: int | None = None) -> list[ClassifiedSignal]:
+        return self.get_classified_signals(hours=hours or settings.signal_lookback_hours)
 
     def get_classified_signal_history(self, limit: int = 500) -> list[ClassifiedSignal]:
         with self._conn() as conn:

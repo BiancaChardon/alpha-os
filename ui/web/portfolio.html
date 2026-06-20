@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Alpha OS — Portfolio Lab</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#000;--bg-1:#0c0c0c;--bg-2:#141414;--line:#2e2e2e;
+  --txt:#e8e8e8;--txt-2:#b0b0b0;--txt-3:#707070;
+  --bloom-orange:#ff9900;--bloom-yellow:#ffcc00;
+  --up:#00c853;--down:#ff5252;
+  --mono:"Consolas","Courier New","IBM Plex Mono",ui-monospace,monospace;
+  --sans:Arial,"Helvetica Neue",Helvetica,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:12px;line-height:1.35;min-height:100vh}
+.topbar{display:flex;align-items:center;gap:12px;height:28px;padding:0 10px;background:var(--bloom-orange);border-bottom:1px solid #cc7a00}
+.topbar h1{font-size:13px;font-weight:700;color:#000;font-family:var(--mono)}
+.topbar .spacer{flex:1}
+.topbar a,.topbar button,.topbar select{font-family:var(--mono);font-size:10px;font-weight:700;border:1px solid #00000044;background:#00000018;color:#000;padding:2px 8px;cursor:pointer;text-decoration:none}
+.page{padding:8px;display:flex;flex-direction:column;gap:6px}
+.disclaimer{background:#1a1200;border:1px solid #664400;color:var(--bloom-yellow);padding:6px 10px;font-family:var(--mono);font-size:11px}
+.kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.kpi{background:var(--bg-1);border:1px solid var(--line);padding:8px 10px}
+.kpi .label{font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--bloom-yellow);font-family:var(--mono);font-weight:700}
+.kpi .val{font-family:var(--mono);font-size:20px;font-weight:700;margin-top:4px}
+.kpi .sub{font-family:var(--mono);font-size:10px;color:var(--txt-3);margin-top:2px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.panel{background:var(--bg);border:1px solid var(--line);display:flex;flex-direction:column;min-height:280px}
+.panel-head{display:flex;align-items:center;gap:8px;padding:4px 8px;border-bottom:1px solid var(--line);background:var(--bg-2)}
+.panel-head h2{font-size:11px;font-weight:700;font-family:var(--mono);letter-spacing:0.04em;text-transform:uppercase}
+.panel-body{padding:8px;flex:1}
+.chart-wrap{position:relative;height:260px}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10px}
+th,td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--bloom-yellow);font-size:9px;text-transform:uppercase}
+td.num{text-align:right}
+.status{font-family:var(--mono);font-size:10px;color:var(--txt-3)}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>ALPHA OS · PORTFOLIO LAB</h1>
+  <select id="methodSelect">
+    <option value="mean_variance">Mean-Variance</option>
+    <option value="risk_parity">Risk Parity</option>
+  </select>
+  <button type="button" id="refreshBtn">↻ OPTIMIZE</button>
+  <div class="spacer"></div>
+  <a href="/dashboard/probability.html">← PROBABILITY LAB</a>
+  <a href="/dashboard/">DASHBOARD</a>
+</header>
+
+<main class="page">
+  <div class="disclaimer" id="disclaimer">Loading paper portfolio from briefing trade ideas…</div>
+
+  <section class="kpi-row">
+    <div class="kpi"><div class="label">Exp Return</div><div class="val" id="kpiReturn">—</div></div>
+    <div class="kpi"><div class="label">Vol (proxy)</div><div class="val" id="kpiVol">—</div></div>
+    <div class="kpi"><div class="label">Sharpe Proxy</div><div class="val" id="kpiSharpe">—</div></div>
+    <div class="kpi"><div class="label">Method</div><div class="val" id="kpiMethod" style="font-size:13px">—</div></div>
+    <div class="kpi"><div class="label">Top Weight</div><div class="val" id="kpiTop">—</div><div class="sub" id="kpiTopSub">—</div></div>
+  </section>
+
+  <div class="status" id="statusLine">—</div>
+
+  <section class="grid">
+    <div class="panel">
+      <div class="panel-head"><h2>Target Weights</h2></div>
+      <div class="panel-body"><div class="chart-wrap"><canvas id="weightChart"></canvas></div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Expected Return vs Weight</h2></div>
+      <div class="panel-body"><div class="chart-wrap"><canvas id="scatterChart"></canvas></div></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Commodity Allocations</h2></div>
+    <div class="panel-body">
+      <table>
+        <thead>
+          <tr><th>Commodity</th><th class="num">Weight</th><th class="num">Exp Return</th><th class="num">Risk Contrib</th><th>Linked Ranks</th><th>Directions</th></tr>
+        </thead>
+        <tbody id="allocTable"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+const API = window.location.origin;
+const COLORS = { power:"#00bcd4", natgas:"#4da6ff", crude:"#ff9900", renewables:"#b388ff", weather:"#69f0ae", general:"#b0b0b0" };
+let weightChart = null;
+let scatterChart = null;
+
+async function loadPortfolio() {
+  const method = document.getElementById("methodSelect").value;
+  const status = document.getElementById("statusLine");
+  status.textContent = "Optimizing…";
+  try {
+    const res = await fetch(`${API}/portfolio/optimize?method=${method}`);
+    if (!res.ok) throw new Error(await res.text());
+    render(await res.json());
+    status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+  } catch (err) {
+    status.textContent = `Error: ${err.message}`;
+  }
+}
+
+function render(data) {
+  document.getElementById("disclaimer").textContent = data.disclaimer || "";
+  const s = data.summary || {};
+  document.getElementById("kpiReturn").textContent = s.expected_return != null ? (s.expected_return * 100).toFixed(2) + "%" : "—";
+  document.getElementById("kpiVol").textContent = s.volatility != null ? (s.volatility * 100).toFixed(2) + "%" : "—";
+  document.getElementById("kpiSharpe").textContent = s.sharpe_proxy ?? "—";
+  document.getElementById("kpiMethod").textContent = (data.method || "—").replace("_", " ").toUpperCase();
+  const top = (data.allocations || [])[0];
+  document.getElementById("kpiTop").textContent = top ? top.commodity : "—";
+  document.getElementById("kpiTopSub").textContent = top ? `${top.weight_pct}%` : "—";
+
+  const allocs = data.allocations || [];
+  const labels = allocs.map(a => a.commodity);
+  const weights = allocs.map(a => a.weight);
+
+  if (weightChart) weightChart.destroy();
+  weightChart = new Chart(document.getElementById("weightChart"), {
+    type: "doughnut",
+    data: {
+      labels,
+      datasets: [{ data: weights, backgroundColor: labels.map(c => COLORS[c] || "#b0b0b0"), borderColor: "#141414", borderWidth: 2 }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "55%",
+      plugins: { legend: { position: "bottom", labels: { color: "#b0b0b0", font: { family: "IBM Plex Mono", size: 10 } } } },
+    },
+  });
+
+  if (scatterChart) scatterChart.destroy();
+  scatterChart = new Chart(document.getElementById("scatterChart"), {
+    type: "scatter",
+    data: {
+      datasets: [{
+        label: "Commodity",
+        data: allocs.map(a => ({ x: a.weight, y: a.expected_return, label: a.commodity })),
+        backgroundColor: labels.map(c => COLORS[c] || "#b0b0b0"),
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => `${ctx.raw.label}: w=${(ctx.raw.x*100).toFixed(1)}% μ=${(ctx.raw.y*100).toFixed(2)}%` } },
+      },
+      scales: {
+        x: { title: { display: true, text: "Weight", color: "#707070" }, ticks: { color: "#707070", callback: v => `${(v*100).toFixed(0)}%` }, grid: { color: "#222" } },
+        y: { title: { display: true, text: "Exp Return", color: "#707070" }, ticks: { color: "#707070", callback: v => `${(v*100).toFixed(1)}%` }, grid: { color: "#222" } },
+      },
+    },
+  });
+
+  document.getElementById("allocTable").innerHTML = allocs.map(a => `
+    <tr>
+      <td>${a.commodity}</td>
+      <td class="num">${a.weight_pct}%</td>
+      <td class="num">${(a.expected_return * 100).toFixed(2)}%</td>
+      <td class="num">${(a.risk_contribution * 100).toFixed(2)}%</td>
+      <td>${(a.trade_ranks || []).map(r => "#"+r).join(", ") || "—"}</td>
+      <td>${(a.directions || []).join(", ") || "—"}</td>
+    </tr>
+  `).join("") || `<tr><td colspan="6">No directional trades to optimize.</td></tr>`;
+}
+
+document.getElementById("refreshBtn").addEventListener("click", loadPortfolio);
+document.getElementById("methodSelect").addEventListener("change", loadPortfolio);
+loadPortfolio();
+</script>
+</body>
+</html>

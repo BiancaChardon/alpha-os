@@ -253,11 +253,15 @@ def compute_trade_probabilities(
 
     trades.sort(key=lambda row: row["rank"])
     avg_p_win = round(sum(t["p_win"] for t in trades) / len(trades), 3) if trades else 0.0
+    from ml.alpha_model import walk_forward_backtest
+
+    backtest = walk_forward_backtest(history)
 
     return {
         "briefing_id": briefing.briefing_id,
         "generated_at": briefing.created_at.isoformat(),
         "model": model_meta,
+        "backtest": backtest,
         "disclaimer": (
             "Probabilities are calibrated against pseudo-labeled historical signal outcomes, "
             "not realized P&L. For desk research only — not execution advice."
