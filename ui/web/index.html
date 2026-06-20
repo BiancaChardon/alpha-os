@@ -276,6 +276,26 @@ thead th.num{text-align:right;}
 .px-verdict-item.challenge{border-left-color:var(--down);}
 .px-verdict-item.mixed{border-left-color:var(--med);}
 .px-verdict-item .vk{font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--bloom-yellow);}
+
+.trade-panel{margin-top:0;}
+.trade-actions{display:flex;gap:6px;align-items:center;margin-left:auto;}
+.trade-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:4px;}
+.trade-card{background:var(--bg-1);border:1px solid var(--line);border-radius:var(--radius);padding:8px 10px;border-left:2px solid var(--accent,var(--bloom-orange));}
+.trade-card .th{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
+.trade-card .rank{font-family:var(--mono);font-size:10px;color:var(--bloom-orange);font-weight:700;}
+.trade-card .dir{font-family:var(--mono);font-size:9px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:1px;border:1px solid var(--line);}
+.trade-card .dir.long{color:var(--up);border-color:var(--up);}
+.trade-card .dir.short{color:var(--down);border-color:var(--down);}
+.trade-card .dir.monitor{color:var(--med);border-color:var(--med);}
+.trade-card .thesis{font-size:12px;line-height:1.45;color:var(--txt);margin-bottom:6px;}
+.trade-card .meta-row{display:flex;gap:10px;flex-wrap:wrap;font-family:var(--mono);font-size:9px;color:var(--txt-3);margin-bottom:6px;}
+.trade-card .note-l{font-size:10px;color:var(--txt-2);line-height:1.4;margin-top:4px;}
+.trade-card .note-l b{font-family:var(--mono);font-size:9px;color:var(--bloom-yellow);text-transform:uppercase;margin-right:4px;}
+.trade-card .card-actions{display:flex;gap:6px;margin-top:8px;}
+.trade-card .mini-btn{font-family:var(--mono);font-size:9px;font-weight:700;padding:3px 8px;background:var(--bg-3);color:var(--txt-2);border:1px solid var(--line);border-radius:1px;cursor:pointer;}
+.trade-card .mini-btn:hover{color:var(--bloom-orange);border-color:var(--bloom-orange);}
+.trade-toast{position:fixed;bottom:28px;right:12px;background:var(--bloom-orange);color:#000;font-family:var(--mono);font-size:10px;font-weight:700;padding:6px 12px;border-radius:1px;opacity:0;transition:opacity .2s;z-index:40;pointer-events:none;}
+.trade-toast.show{opacity:1;}
 </style>
 </head>
 <body>
@@ -382,6 +402,21 @@ thead th.num{text-align:right;}
           <div class="meta"><span class="tag" style="color:var(--down);background:color-mix(in oklch,var(--down) 14%,transparent)">claude-sonnet-4-6</span></div>
         </div>
         <div class="panel-body" id="contrarianBody"></div>
+      </div>
+    </section>
+
+    <section class="panel trade-panel">
+      <div class="panel-head">
+        <h2>Trade Ideas — Desk Handoff</h2>
+        <div class="trade-actions">
+          <button class="pipeline-btn" type="button" id="tradeExportBtn" style="padding:4px 10px;font-size:10px">EXPORT CSV</button>
+          <button class="pipeline-btn" type="button" id="tradeCopyAllBtn" style="padding:4px 10px;font-size:10px">COPY ALL</button>
+        </div>
+        <div class="meta"><span class="tag">human execution · not auto-trade</span></div>
+      </div>
+      <div class="panel-body">
+        <p style="font-size:11px;color:var(--txt-3);margin-bottom:8px">Structured ideas from ranked briefing items — for analyst review, not live order routing.</p>
+        <div class="trade-grid" id="tradeIdeasGrid"></div>
       </div>
     </section>
 
@@ -536,6 +571,7 @@ thead th.num{text-align:right;}
     <span class="cmd-btn" id="footerRefreshBtn"><kbd>GO</kbd> REFRESH</span>
   </footer>
 </div>
+<div class="trade-toast" id="tradeToast">Copied</div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script>
@@ -558,7 +594,16 @@ const COMMOD = {
   power:  {label:"Power",  color:"var(--power)"},
   natgas: {label:"NatGas", color:"var(--natgas)"},
   crude:  {label:"Crude",  color:"var(--crude)"},
+  renewables: {label:"Renewables", color:"#80cbc4"},
+  weather: {label:"Weather", color:"#b388ff"},
 };
+const COMMOD_KEYWORDS = [
+  ["power", /\bpower|pjm|ercot|caiso|lmp|heat rate|demand\b/i],
+  ["natgas", /\bnatgas|natural gas|henry hub|storage|bcf|gas\b/i],
+  ["crude", /\bcrude|wti|brent|opec|oil|refinery\b/i],
+  ["renewables", /\brenewable|solar|curtailment|wind\b/i],
+  ["weather", /\bweather|temp|cold|heat|forecast\b/i],
+];
 const SOURCE_LABELS = {eia:"EIA",fred:"FRED",pjm:"PJM",ercot:"ERCOT",caiso:"CAISO",noaa:"NOAA",eia_today:"EIA Today",ferc:"FERC",opec:"OPEC"};
 const HOST_LABELS = {"eia.gov":"EIA","noaa.gov":"NOAA","pjm.com":"PJM","ercot.com":"ERCOT","opec.org":"OPEC","fred.stlouisfed.org":"FRED","ferc.gov":"FERC","caiso.com":"CAISO"};
 const URG_RANK = {high:3, medium:2, low:1};
@@ -882,6 +927,7 @@ async function fetchPerplexityResearch(useSample=false, force=false){
     }
   }
   renderPerplexity();
+  renderTradeIdeas();
 }
 
 // ---- State ----
@@ -1064,6 +1110,157 @@ function renderBriefing(){
       if(item.classList.toggle("open")) openItems.add(idx); else openItems.delete(idx);
     });
   });
+  renderTradeIdeas();
+}
+
+function inferCommodity(title){
+  const prefix = title.split(" — ")[0];
+  for(const [key, re] of COMMOD_KEYWORDS){
+    if(re.test(prefix) || re.test(title)) return key;
+  }
+  return "other";
+}
+
+function inferDirection(title, signals){
+  const text = title.toLowerCase();
+  const bullish = /\bbullish|rally|firm|spike|tighten|pulls demand|upside|support\b/.test(text);
+  const bearish = /\bbearish|soft|cap|surplus|overhang|range-bound|downside|negative|bleed\b/.test(text);
+  if(signals.length){
+    const avg = signals.reduce((s,x)=>s+x.sentiment,0)/signals.length;
+    if(avg > 0.15 && !bearish) return "long";
+    if(avg < -0.15 && !bullish) return "short";
+  }
+  if(bullish && !bearish) return "long";
+  if(bearish && !bullish) return "short";
+  return "monitor";
+}
+
+function supportingSignals(item){
+  const ids = new Set(item.supporting_signal_ids || []);
+  let matched = (DATA?.classified || []).filter(s => ids.has(s.signal_id));
+  if(!matched.length){
+    const commod = inferCommodity(item.title);
+    matched = (DATA?.classified || []).filter(s => s.commodity === commod).slice(0,3);
+  }
+  return matched;
+}
+
+function buildTradeIdeas(){
+  const br = DATA?.briefing;
+  if(!br?.ranked_items?.length) return [];
+  return br.ranked_items.map(item => {
+    const signals = supportingSignals(item);
+    const commod = inferCommodity(item.title);
+    const direction = inferDirection(item.title, signals);
+    const urgencies = signals.map(s => s.urgency);
+    const urgency = urgencies.includes("high") ? "high" : urgencies.includes("medium") ? "medium" : "low";
+    const pxVerdict = (PX_DATA?.rank_verdicts || []).find(v => v.rank === item.rank);
+    return {
+      rank: item.rank,
+      commodity: commod,
+      commodity_label: COMMOD[commod] ? COMMOD[commod].label : commod.replace(/_/g," "),
+      direction,
+      confidence: item.confidence,
+      thesis: item.title,
+      corroboration: item.corroboration_notes || "",
+      risk: item.contradiction_notes || "",
+      evidence: item.evidence_links || [],
+      urgency,
+      desk_note: direction === "long" ? "Consider long exposure — verify size with risk limits"
+        : direction === "short" ? "Consider short/hedge — verify size with risk limits"
+        : "Monitor — await corroboration before sizing",
+      web_verdict: pxVerdict?.verdict || "",
+      web_summary: pxVerdict?.summary || "",
+      generated_at: br.created_at || new Date().toISOString(),
+    };
+  });
+}
+
+function tradeIdeaText(idea){
+  return [
+    `#${idea.rank} ${idea.commodity_label} · ${idea.direction.toUpperCase()} · conf ${idea.confidence.toFixed(2)}`,
+    idea.thesis,
+    idea.corroboration ? `Corroboration: ${idea.corroboration}` : "",
+    idea.risk ? `Risk: ${idea.risk}` : "",
+    idea.desk_note,
+    idea.evidence.length ? `Evidence: ${idea.evidence.join(", ")}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+function showTradeToast(msg){
+  const el = $("tradeToast");
+  el.textContent = msg;
+  el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), 1800);
+}
+
+function renderTradeIdeas(){
+  const grid = $("tradeIdeasGrid");
+  const ideas = buildTradeIdeas();
+  if(!ideas.length){
+    grid.innerHTML = `<div class="empty" style="padding:20px">Run the pipeline to generate trade ideas from the briefing.</div>`;
+    return;
+  }
+  grid.innerHTML = ideas.map((idea, i) => {
+    const color = COMMOD[idea.commodity]?.color || "var(--bloom-orange)";
+    const ev = idea.evidence.map(u => `<a class="elink" href="${u}" target="_blank" rel="noopener">${linkLabel(u)}</a>`).join("");
+    return `
+    <div class="trade-card" style="--accent:${color}" data-idx="${i}">
+      <div class="th">
+        <span class="rank">#${idea.rank}</span>
+        <span class="dir ${idea.direction}">${idea.direction}</span>
+        ${cflag(idea.commodity)}
+        <span class="badge ${idea.urgency}"><span class="bd"></span>${idea.urgency}</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--txt-3);margin-left:auto">conf ${idea.confidence.toFixed(2)}</span>
+      </div>
+      <div class="thesis">${idea.thesis}</div>
+      <div class="meta-row"><span>${idea.desk_note}</span></div>
+      ${idea.corroboration ? `<div class="note-l"><b>Corrob.</b>${idea.corroboration}</div>` : ""}
+      ${idea.risk ? `<div class="note-l"><b>Risk</b>${idea.risk}</div>` : ""}
+      ${idea.web_summary ? `<div class="note-l"><b>Web</b>${idea.web_verdict ? idea.web_verdict.toUpperCase()+": " : ""}${idea.web_summary}</div>` : ""}
+      ${ev ? `<div class="evidence" style="margin-top:6px"><span class="ev-k">Evidence</span>${ev}</div>` : ""}
+      <div class="card-actions">
+        <button class="mini-btn trade-copy-one" type="button" data-idx="${i}">COPY</button>
+      </div>
+    </div>`;
+  }).join("");
+
+  grid.querySelectorAll(".trade-copy-one").forEach(btn => {
+    btn.addEventListener("click", async e => {
+      e.stopPropagation();
+      const idea = buildTradeIdeas()[+btn.dataset.idx];
+      await navigator.clipboard.writeText(tradeIdeaText(idea));
+      showTradeToast("Trade idea copied");
+    });
+  });
+}
+
+async function copyAllTradeIdeas(){
+  const ideas = buildTradeIdeas();
+  if(!ideas.length) return;
+  const text = ideas.map(tradeIdeaText).join("\n\n---\n\n");
+  await navigator.clipboard.writeText(text);
+  showTradeToast(`${ideas.length} ideas copied`);
+}
+
+function exportTradeIdeasCsv(){
+  const ideas = buildTradeIdeas();
+  if(!ideas.length) return;
+  const esc = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const header = ["rank","commodity","direction","confidence","urgency","thesis","corroboration","risk","desk_note","web_verdict","evidence_urls","generated_at"];
+  const rows = ideas.map(i => [
+    i.rank, i.commodity_label, i.direction, i.confidence.toFixed(2), i.urgency,
+    i.thesis, i.corroboration, i.risk, i.desk_note, i.web_verdict,
+    i.evidence.join("; "), i.generated_at,
+  ].map(esc).join(","));
+  const csv = [header.join(","), ...rows].join("\n");
+  const blob = new Blob([csv], {type:"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `alpha-os-trade-ideas-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showTradeToast("CSV exported");
 }
 
 // ---- Contrarian render ----
@@ -1199,7 +1396,7 @@ function renderTicker(){
 
 function renderAll(){
   rebuildCommodityFilters();
-  renderKpis(); renderCharts(); renderBriefing(); renderContrarian(); renderPerplexity(); renderTicker();
+  renderKpis(); renderCharts(); renderBriefing(); renderContrarian(); renderPerplexity(); renderTradeIdeas(); renderTicker();
   populateSourceDropdown(); renderTable();
   renderSources(); renderEvaluation(); renderPipeline();
   showAnthropicBanner();
@@ -1306,6 +1503,9 @@ $("footerPipelineBtn").addEventListener("click", async () => {
   await runPipelineAction($("pipelineStatus"));
   setTimeout(() => $("refreshBtn").classList.remove("spinning"), 400);
 });
+
+$("tradeCopyAllBtn").addEventListener("click", copyAllTradeIdeas);
+$("tradeExportBtn").addEventListener("click", exportTradeIdeasCsv);
 
 // ---- Clock ----
 function tick(){ $("clock").textContent = new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(new Date()); }
