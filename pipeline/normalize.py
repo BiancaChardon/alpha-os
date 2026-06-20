@@ -25,31 +25,45 @@ def enrich_text_event(event: SignalEvent) -> SignalEvent:
     return event
 
 
-def enrich_timeseries_event(event: SignalEvent, history: list[SignalEvent] | None = None) -> SignalEvent:
+def enrich_timeseries_event(
+    event: SignalEvent,
+    history: list[SignalEvent] | list[float] | None = None,
+) -> SignalEvent:
     payload = dict(event.payload)
     value = payload.get("value")
     if value is None:
         return event
 
-    same_series = []
+    values: list[float] = []
     if history:
-        series = payload.get("series")
-        same_series = [
-            e.payload.get("value")
-            for e in history
-            if e.source == event.source
-            and e.payload.get("series") == series
-            and isinstance(e.payload.get("value"), (int, float))
-        ]
+        if isinstance(history[0], (int, float)):
+            values = [float(v) for v in history]
+        else:
+            series = payload.get("series")
+            series_events = [
+                e
+                for e in history
+                if e.source == event.source and e.payload.get("series") == series
+            ]
+            series_events.sort(key=lambda e: e.ts)
+            values = [
+                float(e.payload["value"])
+                for e in series_events
+                if isinstance(e.payload.get("value"), (int, float))
+            ]
 
-    if len(same_series) >= 2:
-        prev = same_series[0]
-        delta = float(value) - float(prev)
-        pct = (delta / float(prev) * 100) if prev else 0.0
-        mean = sum(same_series) / len(same_series)
-        variance = sum((x - mean) ** 2 for x in same_series) / len(same_series)
+    current = float(value)
+    if not values or values[-1] != current:
+        values.append(current)
+
+    if len(values) >= 2:
+        prev = values[-2]
+        delta = current - prev
+        pct = (delta / prev * 100) if prev else 0.0
+        mean = sum(values) / len(values)
+        variance = sum((x - mean) ** 2 for x in values) / len(values)
         std = variance**0.5
-        z = (float(value) - mean) / std if std else 0.0
+        z = (current - mean) / std if std else 0.0
         payload["delta"] = round(delta, 4)
         payload["pct_change"] = round(pct, 2)
         payload["z_score"] = round(z, 2)
@@ -82,12 +96,18 @@ def refresh_event_timestamps(events: list[SignalEvent]) -> list[SignalEvent]:
     return [event.model_copy(update={"ts": event.ts + offset}) for event in events]
 
 
-def normalize_events(events: list[SignalEvent]) -> list[SignalEvent]:
+def normalize_events(events: list[SignalEvent], store=None) -> list[SignalEvent]:
     events = refresh_event_timestamps(events)
     normalized: list[SignalEvent] = []
     for event in events:
         if event.modality == "text":
             normalized.append(enrich_text_event(event))
         else:
-            normalized.append(enrich_timeseries_event(event, history=events))
+            db_history: list[float] = []
+            if store is not None:
+                series = event.payload.get("series")
+                if series:
+                    db_history = store.get_series_values(event.source, str(series), limit=120)
+            history: list[SignalEvent] | list[float] = db_history if db_history else events
+            normalized.append(enrich_timeseries_event(event, history=history))
     return dedupe_events(normalized)
