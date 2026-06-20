@@ -67,6 +67,11 @@ class EventStore:
                     data TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS ml_snapshots (
+                    snapshot_id TEXT PRIMARY KEY,
+                    data TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
 
@@ -127,6 +132,14 @@ class EventStore:
             rows = conn.execute(
                 "SELECT data FROM classified_signals WHERE created_at >= ? ORDER BY created_at DESC",
                 (cutoff,),
+            ).fetchall()
+        return [ClassifiedSignal.model_validate_json(row["data"]) for row in rows]
+
+    def get_all_classified_signals(self, limit: int = 500) -> list[ClassifiedSignal]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT data FROM classified_signals ORDER BY created_at DESC LIMIT ?",
+                (limit,),
             ).fetchall()
         return [ClassifiedSignal.model_validate_json(row["data"]) for row in rows]
 
@@ -199,6 +212,69 @@ class EventStore:
                 """,
                 (briefing_id, json.dumps(data), now),
             )
+
+    def get_series_values(self, source: str, series: str, *, limit: int = 120) -> list[float]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT payload FROM raw_events
+                WHERE source = ? AND modality = 'timeseries'
+                ORDER BY ts ASC
+                LIMIT ?
+                """,
+                (source, limit * 3),
+            ).fetchall()
+        values: list[float] = []
+        for row in rows:
+            payload = json.loads(row["payload"])
+            if str(payload.get("series")) != series:
+                continue
+            raw = payload.get("value")
+            if isinstance(raw, (int, float)):
+                values.append(float(raw))
+        return values[-limit:]
+
+    def get_series_timestamps(
+        self, source: str, series: str, *, limit: int = 90
+    ) -> list[tuple[datetime, float]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT ts, payload FROM raw_events
+                WHERE source = ? AND modality = 'timeseries'
+                ORDER BY ts ASC
+                LIMIT ?
+                """,
+                (source, limit * 4),
+            ).fetchall()
+        points: list[tuple[datetime, float]] = []
+        for row in rows:
+            payload = json.loads(row["payload"])
+            if str(payload.get("series")) != series:
+                continue
+            raw = payload.get("value")
+            if isinstance(raw, (int, float)):
+                points.append((datetime.fromisoformat(row["ts"]), float(raw)))
+        return points[-limit:]
+
+    def save_ml_snapshot(self, data: dict) -> None:
+        snapshot_id = data.get("snapshot_id", "latest")
+        now = datetime.utcnow().isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO ml_snapshots (snapshot_id, data, created_at)
+                VALUES (?, ?, ?)
+                """,
+                (snapshot_id, json.dumps(data), now),
+            )
+
+    def get_latest_ml_snapshot(self) -> dict | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT data FROM ml_snapshots ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
+        return json.loads(row["data"]) if row else None
 
     def get_perplexity_research(self, briefing_id: str) -> dict | None:
         with self._conn() as conn:
