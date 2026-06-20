@@ -42,6 +42,10 @@ class ClassifiedSignal(BaseModel):
     relevance_score: float = Field(ge=0.0, le=1.0)
     confidence: float = Field(ge=0.0, le=1.0)
     one_line_summary: str
+    detail_summary: str = ""
+    action_hint: str = ""
+    action: Literal["buy", "sell", "hold", "watch"] = "watch"
+    signal_type: Literal["forward", "reactive"] = "reactive"
     entities: list[str] = Field(default_factory=list)
     evidence_links: list[str] = Field(default_factory=list)
     stats: dict = Field(default_factory=dict)

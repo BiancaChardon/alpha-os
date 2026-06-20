@@ -31,7 +31,7 @@ class FREDAdapter(BaseAdapter):
                 "api_key": settings.fred_api_key,
                 "file_type": "json",
                 "sort_order": "desc",
-                "limit": 10,
+                "limit": 60,
             }
             response = httpx.get(url, params=params, timeout=30.0)
             response.raise_for_status()
