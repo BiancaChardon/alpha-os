@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     anthropic_synthesis_model: str = "claude-sonnet-4-6"
     database_path: str = "data/alpha_os.db"
     signal_lookback_hours: int = 24
+    chart_lookback_hours: int = 168
     ingestion_fixture_mode: bool = False
 
     @property
