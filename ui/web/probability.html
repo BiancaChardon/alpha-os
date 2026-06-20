@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Alpha OS — Probability Lab</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#000;--bg-1:#0c0c0c;--bg-2:#141414;--bg-3:#1c1c1c;--line:#2e2e2e;
+  --txt:#e8e8e8;--txt-2:#b0b0b0;--txt-3:#707070;
+  --bloom-orange:#ff9900;--bloom-yellow:#ffcc00;--bloom-blue:#4da6ff;
+  --up:#00c853;--down:#ff5252;--flat:#707070;
+  --mono:"Consolas","Courier New","IBM Plex Mono",ui-monospace,monospace;
+  --sans:Arial,"Helvetica Neue",Helvetica,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:12px;line-height:1.35;min-height:100vh}
+.topbar{display:flex;align-items:center;gap:12px;height:28px;padding:0 10px;background:var(--bloom-orange);border-bottom:1px solid #cc7a00}
+.topbar h1{font-size:13px;font-weight:700;color:#000;font-family:var(--mono);letter-spacing:0.04em}
+.topbar .spacer{flex:1}
+.topbar a,.topbar button{font-family:var(--mono);font-size:10px;font-weight:700;border:1px solid #00000044;background:#00000018;color:#000;padding:2px 8px;cursor:pointer;text-decoration:none}
+.topbar a:hover,.topbar button:hover{background:#00000028}
+.page{padding:8px;display:flex;flex-direction:column;gap:6px}
+.disclaimer{background:#1a1200;border:1px solid #664400;color:var(--bloom-yellow);padding:6px 10px;font-size:11px;font-family:var(--mono)}
+.kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.kpi{background:var(--bg-1);border:1px solid var(--line);padding:8px 10px}
+.kpi .label{font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--bloom-yellow);font-family:var(--mono);font-weight:700}
+.kpi .val{font-family:var(--mono);font-size:20px;font-weight:700;margin-top:4px}
+.kpi .sub{font-family:var(--mono);font-size:10px;color:var(--txt-3);margin-top:2px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.panel{background:var(--bg);border:1px solid var(--line);display:flex;flex-direction:column;min-height:280px}
+.panel-head{display:flex;align-items:center;gap:8px;padding:4px 8px;border-bottom:1px solid var(--line);background:var(--bg-2)}
+.panel-head h2{font-size:11px;font-weight:700;font-family:var(--mono);letter-spacing:0.04em;text-transform:uppercase}
+.panel-body{padding:8px;flex:1}
+.chart-wrap{position:relative;height:260px}
+.table-wrap{overflow:auto;max-height:320px}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10px}
+th,td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--bloom-yellow);font-size:9px;text-transform:uppercase;letter-spacing:0.06em;position:sticky;top:0;background:var(--bg-2)}
+.dir-long{color:var(--up)}.dir-short{color:var(--down)}.dir-monitor{color:var(--bloom-blue)}
+.p-win{font-weight:700}
+.status{font-family:var(--mono);font-size:10px;color:var(--txt-3);padding:4px 0}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>ALPHA OS · PROBABILITY LAB</h1>
+  <div class="spacer"></div>
+  <button type="button" id="refreshBtn">↻ REFRESH</button>
+  <a href="/dashboard/">← DASHBOARD</a>
+</header>
+
+<main class="page">
+  <div class="disclaimer" id="disclaimer">Loading calibrated trade probabilities…</div>
+
+  <section class="kpi-row">
+    <div class="kpi"><div class="label">Trades</div><div class="val" id="kpiCount">—</div></div>
+    <div class="kpi"><div class="label">Avg P(Win)</div><div class="val" id="kpiAvgWin">—</div></div>
+    <div class="kpi"><div class="label">Best Rank</div><div class="val" id="kpiBest">—</div><div class="sub" id="kpiBestSub">—</div></div>
+    <div class="kpi"><div class="label">Engine</div><div class="val" id="kpiEngine" style="font-size:13px">—</div></div>
+    <div class="kpi"><div class="label">Train N</div><div class="val" id="kpiTrain">—</div><div class="sub" id="kpiTrainSub">—</div></div>
+  </section>
+
+  <div class="status" id="statusLine">—</div>
+
+  <section class="grid">
+    <div class="panel">
+      <div class="panel-head"><h2>P(Win) by Rank</h2></div>
+      <div class="panel-body"><div class="chart-wrap"><canvas id="winChart"></canvas></div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Outcome Mix</h2></div>
+      <div class="panel-body"><div class="chart-wrap"><canvas id="mixChart"></canvas></div></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Trade Probability Table</h2></div>
+    <div class="panel-body table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Rank</th><th>Direction</th><th>Commodity</th><th>P(Win)</th><th>P(Flat)</th><th>P(Adverse)</th><th>EV</th><th>Source</th><th>Thesis</th>
+          </tr>
+        </thead>
+        <tbody id="tradeTable"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+const API = window.location.origin;
+let winChart = null;
+let mixChart = null;
+
+const fmtPct = (v) => `${(v * 100).toFixed(1)}%`;
+const dirClass = (d) => d === "long" ? "dir-long" : d === "short" ? "dir-short" : "dir-monitor";
+
+async function loadProbabilities() {
+  const status = document.getElementById("statusLine");
+  status.textContent = "Fetching /trades/probabilities…";
+  try {
+    const res = await fetch(`${API}/trades/probabilities`);
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    render(data);
+    status.textContent = `Updated ${new Date().toLocaleTimeString()} · briefing ${data.briefing_id?.slice(0, 8)}…`;
+  } catch (err) {
+    status.textContent = `Error: ${err.message}`;
+  }
+}
+
+function render(data) {
+  document.getElementById("disclaimer").textContent = data.disclaimer || "";
+  document.getElementById("kpiCount").textContent = data.summary?.trade_count ?? "—";
+  document.getElementById("kpiAvgWin").textContent = data.summary?.avg_p_win != null ? fmtPct(data.summary.avg_p_win) : "—";
+  document.getElementById("kpiBest").textContent = data.summary?.best_trade_rank != null ? `#${data.summary.best_trade_rank}` : "—";
+  document.getElementById("kpiBestSub").textContent = data.summary?.best_p_win != null ? fmtPct(data.summary.best_p_win) : "—";
+  const engine = data.model?.engine || "—";
+  document.getElementById("kpiEngine").textContent = engine.includes("calibrated") ? "CALIBRATED LR" : "HEURISTIC";
+  document.getElementById("kpiTrain").textContent = data.model?.train_samples ?? "—";
+  const sub = [];
+  if (data.model?.train_accuracy != null) sub.push(`acc ${(data.model.train_accuracy * 100).toFixed(0)}%`);
+  if (data.model?.brier_score != null) sub.push(`brier ${data.model.brier_score}`);
+  document.getElementById("kpiTrainSub").textContent = sub.join(" · ") || data.model?.label_definition?.slice(0, 40) + "…";
+
+  const trades = data.trades || [];
+  const labels = trades.map(t => `#${t.rank}`);
+  const wins = trades.map(t => t.p_win);
+  const flats = trades.map(t => t.p_flat);
+  const adverse = trades.map(t => t.p_adverse);
+
+  if (winChart) winChart.destroy();
+  winChart = new Chart(document.getElementById("winChart"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "P(Win)",
+        data: wins,
+        backgroundColor: trades.map(t => t.direction === "long" ? "#00c853aa" : t.direction === "short" ? "#ff5252aa" : "#4da6ffaa"),
+        borderColor: trades.map(t => t.direction === "long" ? "#00c853" : t.direction === "short" ? "#ff5252" : "#4da6ff"),
+        borderWidth: 1,
+      }],
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { min: 0, max: 1, ticks: { callback: v => `${(v * 100).toFixed(0)}%`, color: "#707070" }, grid: { color: "#222" } },
+        y: { ticks: { color: "#b0b0b0", font: { family: "IBM Plex Mono" } }, grid: { display: false } },
+      },
+    },
+  });
+
+  if (mixChart) mixChart.destroy();
+  mixChart = new Chart(document.getElementById("mixChart"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        { label: "P(Win)", data: wins, backgroundColor: "#00c853" },
+        { label: "P(Flat)", data: flats, backgroundColor: "#707070" },
+        { label: "P(Adverse)", data: adverse, backgroundColor: "#ff5252" },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: "#b0b0b0", font: { family: "IBM Plex Mono", size: 10 } } } },
+      scales: {
+        x: { stacked: true, ticks: { color: "#707070" }, grid: { color: "#222" } },
+        y: { stacked: true, max: 1, ticks: { callback: v => `${(v * 100).toFixed(0)}%`, color: "#b0b0b0" }, grid: { color: "#222" } },
+      },
+    },
+  });
+
+  document.getElementById("tradeTable").innerHTML = trades.map(t => `
+    <tr>
+      <td>#${t.rank}</td>
+      <td class="${dirClass(t.direction)}">${t.direction.toUpperCase()}</td>
+      <td>${t.commodity}</td>
+      <td class="p-win">${fmtPct(t.p_win)}</td>
+      <td>${fmtPct(t.p_flat)}</td>
+      <td>${fmtPct(t.p_adverse)}</td>
+      <td>${t.expected_value.toFixed(3)}</td>
+      <td>${t.probability_source === "calibrated_model" ? "ML" : "HEU"}</td>
+      <td>${t.title}</td>
+    </tr>
+  `).join("");
+}
+
+document.getElementById("refreshBtn").addEventListener("click", loadProbabilities);
+loadProbabilities();
+</script>
+</body>
+</html>

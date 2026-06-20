@@ -15,6 +15,7 @@ from agents.perplexity_client import is_configured as perplexity_configured
 from agents.perplexity_client import research_briefing
 from config import settings
 from eval.runner import run_eval
+from ml.trade_probability import compute_trade_probabilities
 from pipeline.orchestrator import ingest_all, run_pipeline
 from pipeline.store import EventStore
 
@@ -116,6 +117,27 @@ def perplexity_research(*, refresh: bool = False) -> dict:
         return result
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Perplexity request failed: {exc}") from exc
+
+
+@app.get("/trades/probabilities")
+def trade_probabilities() -> dict:
+    briefing = store.get_latest_briefing()
+    if not briefing:
+        raise HTTPException(status_code=404, detail="No briefing available")
+
+    classified = store.get_recent_classified_signals(hours=settings.signal_lookback_hours)
+    history = store.get_classified_signal_history(limit=500)
+    review = store.get_contrarian_for_briefing(briefing.briefing_id)
+    px = store.get_perplexity_research(briefing.briefing_id)
+    rank_verdicts = px.get("rank_verdicts") if px else None
+
+    return compute_trade_probabilities(
+        briefing=briefing,
+        classified=classified,
+        contrarian=review,
+        rank_verdicts=rank_verdicts,
+        history=history,
+    )
 
 
 if WEB_DIR.exists():

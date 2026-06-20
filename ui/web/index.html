@@ -409,6 +409,7 @@ thead th.num{text-align:right;}
       <div class="panel-head">
         <h2>Trade Ideas — Desk Handoff</h2>
         <div class="trade-actions">
+          <button class="pipeline-btn" type="button" id="openProbLabBtn" style="padding:4px 10px;font-size:10px">PROBABILITY LAB ↗</button>
           <button class="pipeline-btn" type="button" id="tradeExportBtn" style="padding:4px 10px;font-size:10px">EXPORT CSV</button>
           <button class="pipeline-btn" type="button" id="tradeCopyAllBtn" style="padding:4px 10px;font-size:10px">COPY ALL</button>
         </div>
@@ -746,14 +747,14 @@ function buildPriceDatasets(events){
   tsEvents.forEach(e => {
     const k = seriesKey(e);
     if(!byKey[k]) byKey[k] = [];
-    byKey[k].push({ ts: new Date(e.ts), y: Number(e.payload.value) });
+    byKey[k].push({ ts: parseIsoDate(e.ts), y: Number(e.payload.value) });
   });
   Object.values(byKey).forEach(pts => pts.sort((a,b) => a.ts - b.ts));
 
   const datasets = [];
   const legend = [];
   PRICE_SERIES.forEach(def => {
-    const pts = byKey[def.key];
+    const pts = (byKey[def.key] || []).filter(p => p.ts);
     if(!pts?.length) return;
     datasets.push({
       label: def.label,
@@ -770,7 +771,8 @@ function buildPriceDatasets(events){
     if(PRICE_SERIES.some(p => p.key === k) || !byKey[k].length) return;
     const [src, series] = k.split(":");
     const color = CHART_COLORS[tsEvents.find(e => seriesKey(e) === k)?.commodity] || "#b0b0b0";
-    const pts = byKey[k];
+    const pts = byKey[k].filter(p => p.ts);
+    if(!pts.length) return;
     datasets.push({
       label: `${srcLabel(src)} ${series}`, data: pts.map(p => p.y),
       _labels: pts.map(p => p.ts.toLocaleDateString("en-US", { month: "short", day: "numeric" })),
@@ -853,12 +855,36 @@ function renderCharts(){
 }
 
 const $ = id => document.getElementById(id);
-function fmtTime(iso){ try{ return new Date(iso).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false}); }catch{ return (iso||"").slice(11,16); } }
-function fmtRun(iso){ try{ return new Date(iso).toLocaleString("en-US",{month:"short",day:"2-digit"}); }catch{ return "—"; } }
-function fmtRunTime(iso){ try{ return new Date(iso).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false}); }catch{ return ""; } }
+function parseIsoDate(iso){
+  if(iso == null || iso === "") return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function fmtTime(iso){
+  const d = parseIsoDate(iso);
+  if(!d) return "—";
+  return d.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
+}
+function fmtRun(iso){
+  const d = parseIsoDate(iso);
+  if(!d) return "—";
+  return d.toLocaleString("en-US",{month:"short",day:"2-digit"});
+}
+function fmtRunTime(iso){
+  const d = parseIsoDate(iso);
+  if(!d) return "";
+  return d.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
+}
 function srcLabel(code){ return SOURCE_LABELS[code] || code; }
 function linkLabel(u){ try{ const h=new URL(u).hostname.replace(/^www\./,""); return HOST_LABELS[h]||h; }catch{ return u; } }
-function ago(iso){ const d=(Date.now()-new Date(iso).getTime())/60000; if(d<1) return "just now"; if(d<60) return Math.round(d)+"m ago"; return Math.round(d/60)+"h ago"; }
+function ago(iso){
+  const d = parseIsoDate(iso);
+  if(!d) return "—";
+  const mins = (Date.now()-d.getTime())/60000;
+  if(mins < 1) return "just now";
+  if(mins < 60) return Math.round(mins)+"m ago";
+  return Math.round(mins/60)+"h ago";
+}
 
 function renderPerplexity(){
   const px = PX_DATA;
@@ -1065,7 +1091,9 @@ function renderKpis(){
   $("kpiConf").innerHTML = `${Math.round(top*100)}<small>%</small>`;
   $("kpiConfBar").style.width = (top*100)+"%";
 
-  $("kpiLastRun").innerHTML = `${fmtRun(br?.created_at)}<small> · ${fmtRunTime(br?.created_at)}</small>`;
+  $("kpiLastRun").innerHTML = br?.created_at
+    ? `${fmtRun(br.created_at)}<small> · ${fmtRunTime(br.created_at)}</small>`
+    : "—";
   $("lastrun").textContent = br?.created_at ? ago(br.created_at) : "—";
   $("kpiAdapters").textContent = `${sources} live sources`;
 }
@@ -1506,6 +1534,9 @@ $("footerPipelineBtn").addEventListener("click", async () => {
 
 $("tradeCopyAllBtn").addEventListener("click", copyAllTradeIdeas);
 $("tradeExportBtn").addEventListener("click", exportTradeIdeasCsv);
+$("openProbLabBtn").addEventListener("click", () => {
+  window.open("/dashboard/probability.html", "AlphaOS-ProbabilityLab", "width=1280,height=920,menubar=no,toolbar=no,location=no");
+});
 
 // ---- Clock ----
 function tick(){ $("clock").textContent = new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(new Date()); }

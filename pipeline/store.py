@@ -130,6 +130,14 @@ class EventStore:
             ).fetchall()
         return [ClassifiedSignal.model_validate_json(row["data"]) for row in rows]
 
+    def get_classified_signal_history(self, limit: int = 500) -> list[ClassifiedSignal]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT data FROM classified_signals ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [ClassifiedSignal.model_validate_json(row["data"]) for row in rows]
+
     def save_briefing(self, briefing: Briefing) -> None:
         with self._conn() as conn:
             conn.execute(
